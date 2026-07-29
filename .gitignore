@@ -1,0 +1,13 @@
+/straight/*
+!/straight/versions/
+/straight/versions/*
+!/straight/versions/default.el
+/eln-cache/
+/var/
+/etc/
+/auto-save-list/
+/network-security.data
+/transient/
+/custom.el
+/*.elc
+/.cache/

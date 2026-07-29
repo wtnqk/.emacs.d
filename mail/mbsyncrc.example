@@ -1,0 +1,21 @@
+IMAPAccount personal
+Host imap.example.com
+User user@example.com
+PassCmd "gpg --quiet --for-your-eyes-only --no-tty --decrypt ~/.mail-password.gpg"
+TLSType IMAPS
+
+IMAPStore personal-remote
+Account personal
+
+MaildirStore personal-local
+SubFolders Verbatim
+Path ~/Mail/personal/
+Inbox ~/Mail/personal/INBOX
+
+Channel personal
+Far :personal-remote:
+Near :personal-local:
+Patterns * !"[Gmail]/All Mail"
+Create Both
+Expunge Both
+SyncState *
