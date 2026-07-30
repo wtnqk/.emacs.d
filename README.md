@@ -1,6 +1,6 @@
 # Emacs configuration
 
-The source of truth is `config.org`. It tangles only `early-init.el` and
+The source of truth is `init.org`. It tangles only `early-init.el` and
 `init.el`, and saving it in Emacs regenerates both files automatically.
 
 ## First start
@@ -8,7 +8,7 @@ The source of truth is `config.org`. It tangles only `early-init.el` and
 After cloning, generate the startup files once with:
 
 ```sh
-emacs -Q --batch -l org --eval '(org-babel-tangle-file "config.org")'
+emacs -Q --batch -l org --eval '(org-babel-tangle-file "init.org")'
 ```
 
 Then run `emacs`. straight.el downloads packages on the first start, so it
@@ -17,6 +17,7 @@ takes a while. Install icon fonts afterward with
 
 ## Useful keys
 
+- `F11`: toggle fullscreen
 - `C-c SPC s r`: ripgrep
 - `C-c SPC o s`: search Org-roam notes with ripgrep
 - `C-c SPC o c`: capture a task or note

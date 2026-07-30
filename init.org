@@ -1,0 +1,1036 @@
+#+title: GNU Emacs 設定
+#+property: header-args:emacs-lisp :tangle init.el :results silent
+#+startup: overview
+#+options: toc:2
+
+* はじめに
+:PROPERTIES:
+:CUSTOM_ID: introduction
+:END:
+
+このファイルはEmacs設定の唯一の編集元である。Emacs Lispのブロックをtangleすると、
+起動前の最小限の設定は =early-init.el= に、それ以外は =init.el= に出力される。
+
+- =M-x org-babel-tangle= で起動ファイルを生成する。
+- このファイルをEmacsで保存した場合は自動的に再生成する。
+- パッケージ管理にはstraight.elとuse-packageを使用する。
+
+* 初期化前の設定
+:PROPERTIES:
+:CUSTOM_ID: early-initialization
+:END:
+
+通常のinitファイルより先に評価される設定をまとめる。パッケージの自動初期化や描画を
+抑制し、起動中の不要な処理を減らす。
+
+** 起動時のパフォーマンス
+:PROPERTIES:
+:CUSTOM_ID: early-startup-performance
+:END:
+
+初期化中はGCの閾値を最大化し、フレームサイズの暗黙的な再計算を止める。通常利用向けの
+GC設定はinitファイルで初期化が終わった後に設定し直す。
+
+#+begin_src emacs-lisp :tangle early-init.el
+;;; early-init.el --- Generated from init.org -*- lexical-binding: t; -*-
+
+(setq package-enable-at-startup nil
+      frame-inhibit-implied-resize t
+      gc-cons-threshold most-positive-fixnum
+      gc-cons-percentage 0.6)
+#+end_src
+
+** フレームの初期表示
+:PROPERTIES:
+:CUSTOM_ID: initial-frame
+:END:
+
+メニュー、ツールバー、スクロールバーを隠し、GUIフレームをフルスクリーンで開く。
+フルスクリーンはEmacs標準の =F11= で切り替えられる。
+
+#+begin_src emacs-lisp :tangle early-init.el
+(menu-bar-mode -1)
+(tool-bar-mode -1)
+(scroll-bar-mode -1)
+
+(add-to-list 'default-frame-alist '(vertical-scroll-bars . nil))
+(add-to-list 'default-frame-alist '(menu-bar-lines . 0))
+(add-to-list 'default-frame-alist '(tool-bar-lines . 0))
+(add-to-list 'default-frame-alist '(fullscreen . fullboth))
+#+end_src
+
+** スタートアップ画面
+:PROPERTIES:
+:CUSTOM_ID: startup-screen
+:END:
+
+Emacs標準のスタートアップ画面を表示せず、後段でdashboardを初期画面にする。
+
+#+begin_src emacs-lisp :tangle early-init.el
+(setq inhibit-startup-screen t
+      inhibit-startup-echo-area-message user-login-name)
+#+end_src
+
+** WSLの日本語入力
+:PROPERTIES:
+:CUSTOM_ID: wsl-input-method
+:END:
+
+WSLではGUIツールキットがIBusを利用するよう環境変数を揃える。デーモンが未起動の場合だけ
+バックグラウンドで起動する。
+
+#+begin_src emacs-lisp :tangle early-init.el
+(when (getenv "WSL_DISTRO_NAME")
+  (setenv "GTK_IM_MODULE" "ibus")
+  (setenv "QT_IM_MODULE" "ibus")
+  (setenv "XMODIFIERS" "@im=ibus")
+  (when (and (executable-find "ibus-daemon")
+             (not (eq 0 (call-process "pgrep" nil nil nil "-x" "ibus-daemon"))))
+    (call-process "ibus-daemon" nil 0 nil "-drx")))
+
+;;; early-init.el ends here
+#+end_src
+
+* 基盤
+:PROPERTIES:
+:CUSTOM_ID: foundations
+:END:
+
+パッケージ管理、OS判定、ファイル配置、Emacs全体の既定値を定義する。
+
+** パッケージ管理
+:PROPERTIES:
+:CUSTOM_ID: package-management
+:END:
+
+straight.elを初回だけ公式インストーラーから導入し、use-packageから宣言したパッケージを
+straight.elで取得する。
+
+#+begin_src emacs-lisp
+;;; init.el --- Generated from init.org -*- lexical-binding: t; -*-
+
+(defvar bootstrap-version)
+(let ((bootstrap-file
+       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
+      (bootstrap-version 7))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
+
+(straight-use-package 'use-package)
+(setq straight-use-package-by-default t
+      use-package-always-defer t
+      use-package-expand-minimally t)
+#+end_src
+
+** Customizeの分離
+:PROPERTIES:
+:CUSTOM_ID: custom-file
+:END:
+
+Customizeが書き出す値を生成済みのinitファイルから分離し、存在する場合だけ読み込む。
+
+#+begin_src emacs-lisp
+(setq custom-file (expand-file-name "custom.el" user-emacs-directory))
+(when (file-readable-p custom-file)
+  (load custom-file nil 'nomessage))
+#+end_src
+
+** 実行環境の判定
+:PROPERTIES:
+:CUSTOM_ID: platform-detection
+:END:
+
+OS固有設定を読みやすくするため、macOS、Windows、GNU/Linux、WSLの判定結果を定数にする。
+
+#+begin_src emacs-lisp
+(defconst my/is-mac (eq system-type 'darwin))
+(defconst my/is-windows (eq system-type 'windows-nt))
+(defconst my/is-linux (eq system-type 'gnu/linux))
+(defconst my/is-wsl
+  (and my/is-linux
+       (or (getenv "WSL_DISTRO_NAME")
+           (string-match-p "microsoft" (downcase operating-system-release)))))
+#+end_src
+
+** 実行ファイルの検索パス
+:PROPERTIES:
+:CUSTOM_ID: executable-path
+:END:
+
+各言語のパッケージマネージャーが配置する代表的なディレクトリを、存在する場合だけ
+=exec-path= と環境変数 =PATH= の両方へ追加する。
+
+#+begin_src emacs-lisp
+(defun my/add-exec-path (directory)
+  "Add DIRECTORY to both `exec-path' and PATH when it exists."
+  (when (file-directory-p directory)
+    (add-to-list 'exec-path directory)
+    (setenv "PATH" (concat directory path-separator (getenv "PATH")))))
+
+(dolist (directory '("~/.local/bin" "~/.cargo/bin" "~/go/bin" "~/.ghcup/bin"
+                     "~/.opam/default/bin"))
+  (my/add-exec-path (expand-file-name directory)))
+#+end_src
+
+** 生成ファイルの配置
+:PROPERTIES:
+:CUSTOM_ID: generated-file-layout
+:END:
+
+no-litteringを使い、自動保存などの生成物を設定ディレクトリ直下に散らさない。
+
+#+begin_src emacs-lisp
+(use-package no-littering
+  :demand t
+  :config
+  (setq auto-save-file-name-transforms
+        `((".*" ,(no-littering-expand-var-file-name "auto-save/") t))))
+#+end_src
+
+** 基本動作
+:PROPERTIES:
+:CUSTOM_ID: basic-behavior
+:END:
+
+初期化後のGC、バックアップ、インデント、表示に関する全体設定を行う。行番号は通常の
+バッファで表示し、Orgやターミナルなど文章・端末中心のモードでは無効にする。
+
+#+begin_src emacs-lisp
+(setq gc-cons-threshold (* 64 1024 1024)
+      gc-cons-percentage 0.1
+      read-process-output-max (* 1024 1024)
+      create-lockfiles nil
+      make-backup-files t
+      backup-by-copying t
+      delete-old-versions t
+      kept-new-versions 6
+      kept-old-versions 2
+      version-control t
+      sentence-end-double-space nil
+      use-short-answers t
+      ring-bell-function #'ignore)
+
+(setq-default indent-tabs-mode nil
+              tab-width 4
+              fill-column 100
+              truncate-lines nil)
+
+(global-auto-revert-mode 1)
+(delete-selection-mode 1)
+(electric-pair-mode 1)
+(save-place-mode 1)
+(savehist-mode 1)
+(recentf-mode 1)
+(global-display-line-numbers-mode 1)
+(column-number-mode 1)
+
+(dolist (hook '(org-mode-hook term-mode-hook shell-mode-hook eshell-mode-hook
+                dashboard-mode-hook mu4e-main-mode-hook))
+  (add-hook hook (lambda () (display-line-numbers-mode -1))))
+#+end_src
+
+** 操作支援とリーダーキー
+:PROPERTIES:
+:CUSTOM_ID: leader-keys
+:END:
+
+which-keyで利用可能なキーを表示する。主要コマンドは =C-c SPC= から始まるリーダーキーへ
+集約し、ファイル、プロジェクト、検索、Org、メールへ一貫してアクセスできるようにする。
+
+#+begin_src emacs-lisp
+(use-package which-key
+  :straight nil
+  :demand t
+  :config (which-key-mode 1))
+
+(use-package general
+  :demand t
+  :config
+  (general-create-definer my/leader
+    :states '(normal insert visual emacs)
+    :prefix "C-c SPC")
+  (my/leader
+    "f f" '(find-file :which-key "find file")
+    "f r" '(consult-recent-file :which-key "recent file")
+    "b b" '(consult-buffer :which-key "switch buffer")
+    "p p" '(project-switch-project :which-key "switch project")
+    "p f" '(project-find-file :which-key "project file")
+    "s r" '(consult-ripgrep :which-key "ripgrep")
+    "g g" '(magit-status :which-key "magit")
+    "g d" '(difftastic-magit-diff :which-key "difftastic diff")
+    "k k" '(kubernetes-overview :which-key "kubernetes")
+    "o a" '(org-agenda :which-key "agenda")
+    "o c" '(org-capture :which-key "capture")
+    "o r" '(org-roam-node-find :which-key "roam node")
+    "o s" '(my/org-roam-rg :which-key "search notes")
+    "m m" '(mu4e :which-key "mail")
+    "r r" '(elfeed :which-key "RSS")))
+#+end_src
+
+** 編集支援
+:PROPERTIES:
+:CUSTOM_ID: editing-helpers
+:END:
+
+Undo履歴の可視化、括弧の色分け、EditorConfig連携を全体で利用する。
+
+#+begin_src emacs-lisp
+(use-package vundo :bind ("C-x u" . vundo))
+(use-package rainbow-delimiters :hook (prog-mode . rainbow-delimiters-mode))
+(use-package editorconfig :config (editorconfig-mode 1))
+#+end_src
+
+** 設定の自動生成
+:PROPERTIES:
+:CUSTOM_ID: automatic-tangling
+:END:
+
+=init.org= 自身を保存したときだけ、バッファローカルな保存後フックで起動ファイルを
+再生成する。他のOrgファイルを保存してもtangleは実行しない。
+
+#+begin_src emacs-lisp
+(defun my/tangle-config-on-save ()
+  "Tangle this literate configuration after saving it."
+  (when (file-equal-p buffer-file-name
+                      (expand-file-name "init.org" user-emacs-directory))
+    (org-babel-tangle)))
+(add-hook 'org-mode-hook
+          (lambda ()
+            (when (and buffer-file-name
+                       (file-equal-p buffer-file-name
+                                     (expand-file-name "init.org" user-emacs-directory)))
+              (add-hook 'after-save-hook #'my/tangle-config-on-save nil t))))
+#+end_src
+
+* 外観
+:PROPERTIES:
+:CUSTOM_ID: appearance
+:END:
+
+テーマ、アイコン、フォントを揃え、GUIとターミナルのどちらでも情報量を保つ。
+
+** テーマ
+:PROPERTIES:
+:CUSTOM_ID: theme
+:END:
+
+Everforestを起動時に読み込み、Orgの見出しやブロックにもテーマの色を適用する。
+
+#+begin_src emacs-lisp
+(straight-use-package
+ '(doom-everforest-theme
+   :type git
+   :host github
+   :repo "Cardoso1994/doom-everforest-theme"))
+(add-to-list 'custom-theme-load-path
+             (expand-file-name "straight/build/doom-everforest-theme"
+                               user-emacs-directory))
+
+(use-package doom-themes
+  :demand t
+  :config
+  (load-theme 'doom-everforest t)
+  (doom-themes-org-config))
+#+end_src
+
+** アイコンとモードライン
+:PROPERTIES:
+:CUSTOM_ID: icons-and-modeline
+:END:
+
+GUIではNerd Fontsのアイコンを補完候補とモードラインへ表示する。ターミナルではアイコンを
+無効にし、文字だけで表示が成立するようにする。
+
+#+begin_src emacs-lisp
+(use-package nerd-icons)
+(use-package doom-modeline
+  :demand t
+  :custom
+  (doom-modeline-icon (display-graphic-p))
+  (doom-modeline-height 28)
+  :config (doom-modeline-mode 1))
+
+(use-package nerd-icons-completion
+  :after marginalia
+  :config (nerd-icons-completion-mode 1))
+#+end_src
+
+** フォント
+:PROPERTIES:
+:CUSTOM_ID: fonts
+:END:
+
+英数字には利用可能な等幅フォントを優先順で選び、日本語にはHackGen Console NFを使う。
+フォント設定はGUIフレームでのみ評価する。
+
+#+begin_src emacs-lisp
+(when (display-graphic-p)
+  (let ((font-name (if (find-font (font-spec :name "HackGen Console NF"))
+                       "HackGen Console NF-12"
+                     "Hack-12")))
+    (set-frame-font font-name nil t)
+    (dolist (charset '(japanese-jisx0208 japanese-jisx0212 katakana-jisx0201))
+      (set-fontset-font t charset
+                        (font-spec :family "HackGen Console NF")
+                        nil 'append))))
+#+end_src
+
+** macOSの修飾キー
+:PROPERTIES:
+:CUSTOM_ID: mac-modifiers
+:END:
+
+macOSではCommandをMeta、OptionをSuperとして扱い、他のOSと操作体系を近づける。
+
+#+begin_src emacs-lisp
+(when my/is-mac
+  (setq mac-command-modifier 'meta
+        mac-option-modifier 'super))
+#+end_src
+
+* 補完とナビゲーション
+:PROPERTIES:
+:CUSTOM_ID: completion-and-navigation
+:END:
+
+Emacs標準の補完APIを中心に、ミニバッファとバッファ内補完のUIを構成する。
+
+** ミニバッファ補完
+:PROPERTIES:
+:CUSTOM_ID: minibuffer-completion
+:END:
+
+Verticoで候補を縦に表示し、Orderlessで空白区切りの柔軟な絞り込みを行う。Marginaliaは
+候補の種別や補足情報を付加する。
+
+#+begin_src emacs-lisp
+(use-package vertico
+  :demand t
+  :custom (vertico-cycle t)
+  :config (vertico-mode 1))
+
+(use-package orderless
+  :demand t
+  :custom
+  (completion-styles '(orderless basic))
+  (completion-category-defaults nil)
+  (completion-category-overrides '((file (styles partial-completion)))))
+
+(use-package marginalia :demand t :config (marginalia-mode 1))
+#+end_src
+
+** 検索とアクション
+:PROPERTIES:
+:CUSTOM_ID: search-and-actions
+:END:
+
+Consultで行、バッファ、履歴を検索し、Embarkで現在の候補に応じた操作を実行する。
+Affeは非同期のファイル検索とgrepが必要な場合に遅延ロードする。
+
+#+begin_src emacs-lisp
+(use-package consult
+  :bind (("C-s" . consult-line)
+         ("C-x b" . consult-buffer)
+         ("M-y" . consult-yank-pop)))
+(use-package embark
+  :bind (("C-." . embark-act)
+         ("C-;" . embark-dwim)
+         ("C-h B" . embark-bindings)))
+(use-package embark-consult :after (embark consult))
+(use-package affe :commands (affe-find affe-grep))
+#+end_src
+
+** バッファ内補完
+:PROPERTIES:
+:CUSTOM_ID: in-buffer-completion
+:END:
+
+Corfuで入力中の候補を表示し、Capeからファイル名とバッファ内単語の補完ソースを追加する。
+
+#+begin_src emacs-lisp
+(use-package corfu
+  :demand t
+  :custom
+  (corfu-auto t)
+  (corfu-cycle t)
+  (corfu-preselect 'prompt)
+  :config (global-corfu-mode 1))
+(use-package cape
+  :demand t
+  :init
+  (add-to-list 'completion-at-point-functions #'cape-file)
+  (add-to-list 'completion-at-point-functions #'cape-dabbrev))
+#+end_src
+
+* 開発環境
+:PROPERTIES:
+:CUSTOM_ID: development
+:END:
+
+Git、構文解析、診断、フォーマット、Language Server Protocolを使った開発環境を整える。
+
+** プロジェクトとGit
+:PROPERTIES:
+:CUSTOM_ID: projects-and-git
+:END:
+
+Emacs標準のproject.elを基盤に、Magit、Git関連モード、差分表示、履歴移動を追加する。
+
+#+begin_src emacs-lisp
+(use-package project :straight nil)
+(use-package magit
+  :commands magit-status
+  :custom
+  (magit-diff-refine-hunk 'all)
+  (magit-diff-paint-whitespace 'untrailing))
+(use-package difftastic
+  :demand t
+  :custom (difftastic-executable (or (executable-find "difft") "difft"))
+  :config
+  (require 'difftastic-bindings)
+  (difftastic-bindings-mode 1))
+(use-package git-modes)
+(use-package diff-hl
+  :hook ((prog-mode . diff-hl-mode)
+         (dired-mode . diff-hl-dired-mode)))
+(use-package git-timemachine :commands git-timemachine)
+#+end_src
+
+** 診断と編集支援
+:PROPERTIES:
+:CUSTOM_ID: development-tools
+:END:
+
+Flycheckで診断し、Yasnippetでスニペットを展開する。Tree-sitter文法は必要時に確認して
+導入し、Apheleiaで対応バッファを自動フォーマットする。
+
+#+begin_src emacs-lisp
+(use-package flycheck :hook (prog-mode . flycheck-mode))
+(use-package yasnippet :config (yas-global-mode 1))
+(use-package yasnippet-snippets :after yasnippet)
+(use-package treesit-auto
+  :custom (treesit-auto-install 'prompt)
+  :config (global-treesit-auto-mode 1))
+(use-package apheleia :config (apheleia-global-mode 1))
+#+end_src
+
+** Language Server Protocol
+:PROPERTIES:
+:CUSTOM_ID: language-server-protocol
+:END:
+
+lsp-modeの補完候補はCorfuとOrderlessへ渡す。大規模リポジトリで負荷になりやすい
+ファイル監視は無効にし、UI、ツリー表示、デバッガーは必要時に読み込む。
+
+#+begin_src emacs-lisp
+(use-package lsp-mode
+  :commands (lsp lsp-deferred)
+  :custom
+  (lsp-keymap-prefix "C-c l")
+  (lsp-enable-file-watchers nil)
+  (lsp-completion-provider :none)
+  (lsp-headerline-breadcrumb-enable t)
+  :init
+  (defun my/lsp-mode-setup-completion ()
+    (setf (alist-get 'styles (alist-get 'lsp-capf completion-category-defaults))
+          '(orderless)))
+  :hook (lsp-completion-mode . my/lsp-mode-setup-completion))
+(use-package lsp-ui :after lsp-mode :commands lsp-ui-mode)
+(use-package lsp-treemacs :after lsp-mode)
+(use-package dap-mode :after lsp-mode :commands dap-debug)
+#+end_src
+
+** 静的解析
+:PROPERTIES:
+:CUSTOM_ID: check
+:END:
+
+#+begin_src emacs-lisp
+  (use-package flymake-proc)
+
+  (use-package flycheck-textlint)
+
+  (use-package flycheck-elsa)
+
+  (use-package flycheck-projectile)
+
+  (use-package flycheck-cfn)
+#+end_src
+
+** カーソル
+:PROPERTIES:
+:CUSTOM_ID: cursol
+
+操作を便利にするavy、avy-zap、expand-region、multiple-cursorsを追加する。
+
+#+begin_src emacs-lisp
+(use-package avy
+  :bind (("M-g c" . avy-goto-char-timer)
+         ("M-g w" . avy-goto-word-1)
+         ("M-g l" . avy-goto-line)))
+
+(use-package avy-zap
+  :after avy
+  :bind (("M-z" . avy-zap-to-char)
+         ("M-Z" . avy-zap-up-to-char)))
+
+(use-package expand-region
+  :bind (("C-=" . er/expand-region)
+         ("C--" . er/contract-region)))
+
+(use-package multiple-cursors
+  :bind (("C->" . mc/mark-next-like-this)
+         ("C-<" . mc/mark-previous-like-this)
+         ("C-c C-<" . mc/mark-all-like-this)
+         ("C-c C-RET" . mc/edit-lines)))
+#+end_src
+
+* プログラミング言語
+:PROPERTIES:
+:CUSTOM_ID: programming-languages
+:END:
+
+ファイル拡張子からメジャーモードを選び、対応する言語ではLSPを遅延起動する。
+
+** Python、Go、Rust
+:PROPERTIES:
+:CUSTOM_ID: python-go-rust
+:END:
+
+主要なバックエンド言語のモードを設定する。Rustは保存時にrustfmtを実行する。
+
+#+begin_src emacs-lisp
+(use-package python :straight nil :hook (python-ts-mode . lsp-deferred))
+(use-package go-mode :mode "\\.go\\'" :hook (go-mode . lsp-deferred))
+(use-package rust-mode
+  :mode "\\.rs\\'"
+  :custom (rust-format-on-save t)
+  :hook (rust-mode . lsp-deferred))
+#+end_src
+
+** Web開発
+:PROPERTIES:
+:CUSTOM_ID: web-development
+:END:
+
+TypeScript、JSX、TSX、Svelteを扱う。複数のテンプレート構文を含むファイルはweb-modeへ
+関連付ける。
+
+#+begin_src emacs-lisp
+(use-package typescript-mode :mode "\\.ts\\'" :hook (typescript-mode . lsp-deferred))
+(use-package web-mode
+  :mode (("\\.tsx\\'" . web-mode)
+         ("\\.jsx\\'" . web-mode)
+         ("\\.svelte\\'" . web-mode))
+  :hook (web-mode . lsp-deferred))
+(use-package svelte-mode :mode "\\.svelte\\'" :hook (svelte-mode . lsp-deferred))
+#+end_src
+
+** データ形式とスクリプト言語
+:PROPERTIES:
+:CUSTOM_ID: data-and-scripting-languages
+:END:
+
+YAML、TOML、JSON、Luaに対応するモードを拡張子へ関連付ける。
+
+#+begin_src emacs-lisp
+(use-package yaml-mode :mode "\\.ya?ml\\'" :hook (yaml-mode . lsp-deferred))
+(use-package toml-mode :mode "\\.toml\\'" :hook (toml-mode . lsp-deferred))
+(use-package json-mode :mode "\\.json\\'" :hook (json-mode . lsp-deferred))
+(use-package lua-mode :mode "\\.lua\\'" :hook (lua-mode . lsp-deferred))
+#+end_src
+
+** 関数型言語とJVM言語
+:PROPERTIES:
+:CUSTOM_ID: functional-and-jvm-languages
+:END:
+
+Erlang VM系、Haskell、OCaml、Kotlinの各モードでLSPを利用する。
+
+#+begin_src emacs-lisp
+(use-package erlang :mode "\\.erl\\'" :hook (erlang-mode . lsp-deferred))
+(use-package elixir-mode :mode "\\.exs?\\'" :hook (elixir-mode . lsp-deferred))
+(use-package gleam-ts-mode :mode "\\.gleam\\'" :hook (gleam-ts-mode . lsp-deferred))
+(use-package haskell-mode :mode "\\.hs\\'" :hook (haskell-mode . lsp-deferred))
+(use-package tuareg :mode "\\.mli?\\'" :hook (tuareg-mode . lsp-deferred))
+(use-package kotlin-mode :mode "\\.kts?\\'" :hook (kotlin-mode . lsp-deferred))
+#+end_src
+
+** SQLと文書形式
+:PROPERTIES:
+:CUSTOM_ID: sql-and-document-formats
+:END:
+
+SQL、Markdown、Typstを編集する。READMEはGitHub Flavored Markdownとして開く。
+
+#+begin_src emacs-lisp
+(use-package sql :straight nil :hook (sql-mode . lsp-deferred))
+(use-package markdown-mode
+  :mode (("README\\.md\\'" . gfm-mode) ("\\.md\\'" . markdown-mode))
+  :hook (markdown-mode . lsp-deferred))
+(use-package typst-ts-mode :mode "\\.typ\\'" :hook (typst-ts-mode . lsp-deferred))
+#+end_src
+
+** Zig
+:PROPERTIES:
+:CUSTOM_ID: zig
+:END:
+
+ZigではLSPを起動するが、保存時の自動フォーマットは無効にして明示的な整形を優先する。
+
+#+begin_src emacs-lisp
+(use-package zig-mode
+  :mode "\\.zig\\'"
+  :custom (zig-format-on-save nil)
+  :hook (zig-mode . lsp-deferred))
+#+end_src
+
+* インフラと設定ファイル
+:PROPERTIES:
+:CUSTOM_ID: infrastructure-and-configuration
+:END:
+
+インフラ運用で扱う設定ファイルをファイル名、拡張子、配置先、内容から適切なモードへ
+関連付ける。
+
+** Ansible
+:PROPERTIES:
+:CUSTOM_ID: ansible
+:END:
+
+YAMLファイルのうち、ファイル名やパスが一般的なAnsible構成に一致する場合だけ
+ansible-modeを有効にする。
+
+#+begin_src emacs-lisp
+(defun my/ansible-maybe-enable ()
+  "Enable Ansible support for YAML files in conventional Ansible paths."
+  (when (and buffer-file-name
+             (string-match-p
+              (rx (or "playbook" "/roles/" "/ansible/"))
+              (downcase buffer-file-name)))
+    (ansible-mode 1)))
+
+(use-package ansible
+  :hook (yaml-mode . my/ansible-maybe-enable))
+(use-package ansible-doc :after ansible)
+#+end_src
+
+** Webサーバーとビルド定義
+:PROPERTIES:
+:CUSTOM_ID: server-and-build-files
+:END:
+
+Apache、Bazel、一般的なconfファイル、CSVをそれぞれ専用モードで開く。
+
+#+begin_src emacs-lisp
+(use-package apache-mode
+  :mode (("/\\.htaccess\\'" . apache-mode)
+         ("/apache2/.*\\.conf\\'" . apache-mode)
+         ("/httpd/conf/.*\\.conf\\'" . apache-mode)))
+(use-package bazel :mode (("/BUILD\\(?:\\.bazel\\)?\\'" . bazel-mode)
+                          ("/WORKSPACE\\'" . bazel-mode)
+                          ("\\.bzl\\'" . bazel-mode)))
+(use-package conf-mode :straight nil :mode ("\\.cnf\\'" . conf-mode))
+(use-package csv-mode :mode (("\\.csv\\'" . csv-mode) ("\\.tsv\\'" . csv-mode)))
+#+end_src
+
+** コンテナとシェル
+:PROPERTIES:
+:CUSTOM_ID: containers-and-shells
+:END:
+
+Compose、Dockerfile、Elm、Fishのファイル名と拡張子を認識する。
+
+#+begin_src emacs-lisp
+(use-package docker-compose-mode
+  :mode (("compose\\.ya?ml\\'" . docker-compose-mode)
+         ("docker-compose.*\\.ya?ml\\'" . docker-compose-mode)))
+(use-package dockerfile-mode
+  :mode (("Dockerfile.*\\'" . dockerfile-mode)
+         ("\\.dockerfile\\'" . dockerfile-mode)))
+(use-package elm-mode :mode "\\.elm\\'" :hook (elm-mode . lsp-deferred))
+(use-package fish-mode :mode (("\\.fish\\'" . fish-mode) ("/config\\.fish\\'" . fish-mode)))
+#+end_src
+
+** 汎用設定ファイル
+:PROPERTIES:
+:CUSTOM_ID: general-configuration-files
+:END:
+
+HCL、INI、Justfileを専用モードへ関連付ける。
+
+#+begin_src emacs-lisp
+(use-package hcl-mode :mode (("\\.hcl\\'" . hcl-mode) ("\\.tfvars\\'" . hcl-mode)))
+(use-package ini-mode :mode "\\.ini\\'")
+(use-package just-mode :mode (("/[Jj]ustfile\\'" . just-mode) ("\\.just\\'" . just-mode)))
+#+end_src
+
+** Kubernetes
+:PROPERTIES:
+:CUSTOM_ID: kubernetes
+:END:
+
+配置先または =apiVersion:= の内容からKubernetesマニフェストを検出する。Yasnippet、LSP、
+Helmテンプレートの強調表示を組み合わせ、クラスタ操作コマンドは必要時に読み込む。
+
+#+begin_src emacs-lisp
+(use-package k8s-mode
+  :mode (("/k8s/.*\\.ya?ml\\'" . k8s-mode)
+         ("/kubernetes/.*\\.ya?ml\\'" . k8s-mode)
+         ("/manifests/.*\\.ya?ml\\'" . k8s-mode))
+  :init
+  (add-to-list 'magic-mode-alist
+               '("\\(?:---[[:space:]]*\\)?apiVersion:[[:space:]]" . k8s-mode))
+  :custom (k8s-indent-offset 2)
+  :hook ((k8s-mode . yas-minor-mode)
+         (k8s-mode . lsp-deferred)))
+
+(defun my/helm-template-maybe-enable ()
+  "Enable Go template highlighting inside a Helm chart."
+  (when (and buffer-file-name
+             (locate-dominating-file buffer-file-name "Chart.yaml"))
+    (go-template-helper-mode 1)))
+
+(use-package go-template-helper-mode
+  :hook ((yaml-mode . my/helm-template-maybe-enable)
+         (k8s-mode . my/helm-template-maybe-enable)))
+(use-package kubernetes-helm
+  :commands (kubernetes-helm-template kubernetes-helm-install
+             kubernetes-helm-upgrade kubernetes-helm-status))
+(use-package kubernetes :commands kubernetes-overview)
+#+end_src
+
+** 図、ビルド、スタイルシート
+:PROPERTIES:
+:CUSTOM_ID: diagrams-build-and-styles
+:END:
+
+Mermaid、Makefile、Nginx、Sass/SCSSをファイル名または拡張子から判別する。
+
+#+begin_src emacs-lisp
+(use-package mermaid-mode :mode (("\\.mmd\\'" . mermaid-mode) ("\\.mermaid\\'" . mermaid-mode)))
+(use-package make-mode :straight nil :mode ("\\.mk\\'" . makefile-mode))
+(use-package nginx-mode
+  :mode (("nginx\\.conf\\'" . nginx-mode)
+         ("/nginx/.*\\.conf\\'" . nginx-mode)))
+(use-package scss-mode :mode (("\\.scss\\'" . scss-mode) ("\\.sass\\'" . scss-mode)))
+#+end_src
+
+** システム設定とInfrastructure as Code
+:PROPERTIES:
+:CUSTOM_ID: system-configuration-and-iac
+:END:
+
+SSH、ログ、systemd、Terraform、tmuxの設定を専用モードで開く。TerraformではLSPも
+遅延起動する。
+
+#+begin_src emacs-lisp
+(use-package ssh-config-mode
+  :mode (("/\\.ssh/config\\(?:\\.d/.*\\.conf\\)?\\'" . ssh-config-mode)
+         ("/sshd?_config\\(?:\\.d/.*\\.conf\\)?\\'" . ssh-config-mode)
+         ("/known_hosts\\'" . ssh-known-hosts-mode)
+         ("/authorized_keys2?\\'" . ssh-authorized-keys-mode)))
+(use-package syslog-mode :mode "\\.log\\'")
+(use-package systemd
+  :mode (("\\.\\(?:service\\|timer\\|socket\\|mount\\|target\\|path\\|slice\\|scope\\|nspawn\\)\\'"
+          . systemd-mode)))
+(use-package terraform-mode :mode "\\.tf\\'" :hook (terraform-mode . lsp-deferred))
+(use-package tmux-mode :mode (("\\.tmux\\.conf\\'" . tmux-mode) ("/tmux\\.conf\\'" . tmux-mode)))
+#+end_src
+
+* Org、ノート、アジェンダ
+:PROPERTIES:
+:CUSTOM_ID: org-notes-and-agenda
+:END:
+
+Orgをタスク、メモ、アジェンダの共通形式として使い、Org-roamで相互リンクされたノートを
+管理する。
+
+** Orgの基本設定
+:PROPERTIES:
+:CUSTOM_ID: org-basic-settings
+:END:
+
+=~/00.orgs= をOrgデータの基準ディレクトリとする。完了時刻を記録し、インデント表示、
+装飾記号の非表示、Returnでのリンク追従を有効にする。
+
+#+begin_src emacs-lisp
+(use-package org
+  :straight nil
+  :mode ("\\.org\\'" . org-mode)
+  :custom
+  (org-directory (expand-file-name "~/00.orgs"))
+  (org-agenda-files (list org-directory))
+  (org-default-notes-file (expand-file-name "inbox.org" org-directory))
+  (org-log-done 'time)
+  (org-startup-indented t)
+  (org-hide-emphasis-markers t)
+  (org-return-follows-link t)
+  :config
+  (setq org-capture-templates
+        '(("t" "Todo" entry (file+headline org-default-notes-file "Inbox")
+           "* TODO %?\n  %U\n  %a")
+          ("n" "Note" entry (file+headline org-default-notes-file "Notes")
+           "* %?\n  %U\n  %a"))))
+#+end_src
+
+** Orgの表示
+:PROPERTIES:
+:CUSTOM_ID: org-appearance
+:END:
+
+org-modernで見出し、箇条書き、表などを視覚的に整える。
+
+#+begin_src emacs-lisp
+(use-package org-modern :hook (org-mode . org-modern-mode))
+#+end_src
+
+** Org-roam
+:PROPERTIES:
+:CUSTOM_ID: org-roam
+:END:
+
+=~/00.orgs/roam= にノートを置き、no-littering配下にデータベースを保存する。データベースは
+自動同期し、ノートの検索、挿入、作成を専用キーから実行できる。
+
+#+begin_src emacs-lisp
+(use-package org-roam
+  :custom
+  (org-roam-directory (file-truename (expand-file-name "roam" org-directory)))
+  (org-roam-db-location (expand-file-name "org-roam.db" no-littering-var-directory))
+  :bind (("C-c n f" . org-roam-node-find)
+         ("C-c n i" . org-roam-node-insert)
+         ("C-c n c" . org-roam-capture))
+  :config (org-roam-db-autosync-mode 1))
+#+end_src
+
+** ノートの全文検索
+:PROPERTIES:
+:CUSTOM_ID: org-roam-full-text-search
+:END:
+
+Consultとripgrepを使い、Org-roamディレクトリ全体を高速に全文検索する。
+
+#+begin_src emacs-lisp
+(defun my/org-roam-rg ()
+  "Search all Org-roam notes using ripgrep and Consult."
+  (interactive)
+  (consult-ripgrep org-roam-directory))
+#+end_src
+
+* メールとフィード
+:PROPERTIES:
+:CUSTOM_ID: mail-and-feeds
+:END:
+
+ローカルのMaildirをmu4eで読み、RSS/AtomフィードをElfeedで管理する。
+
+** メール
+:PROPERTIES:
+:CUSTOM_ID: mail
+:END:
+
+mbsyncで5分ごとにMaildirを同期し、送信はmsmtpへ委譲する。mu4e-alertは未読状況を
+モードラインへ表示する。
+
+#+begin_src emacs-lisp
+(add-to-list 'load-path "/usr/share/emacs/site-lisp/mu4e")
+(use-package mu4e
+  :straight nil
+  :commands mu4e
+  :custom
+  (mu4e-maildir (expand-file-name "~/Mail"))
+  (mu4e-get-mail-command "mbsync -a")
+  (mu4e-update-interval 300)
+  (mu4e-change-filenames-when-moving t)
+  (mu4e-compose-format-flowed t)
+  (message-send-mail-function 'message-send-mail-with-sendmail)
+  (sendmail-program (or (executable-find "msmtp") "msmtp"))
+  (message-sendmail-extra-arguments '("--read-envelope-from"))
+  (message-sendmail-f-is-evil t))
+(use-package mu4e-alert :after mu4e :config (mu4e-alert-enable-mode-line-display))
+#+end_src
+
+** フィード
+:PROPERTIES:
+:CUSTOM_ID: feeds
+:END:
+
+Elfeedのデータベースをno-littering配下へ保存し、購読元はOrgファイル
+=~/00.orgs/feeds.org= で管理する。
+
+#+begin_src emacs-lisp
+(use-package elfeed
+  :commands elfeed
+  :custom (elfeed-db-directory (expand-file-name "elfeed" no-littering-var-directory)))
+(use-package elfeed-org
+  :after elfeed
+  :custom (rmh-elfeed-org-files (list (expand-file-name "feeds.org" org-directory)))
+  :config (elfeed-org))
+#+end_src
+
+* ダッシュボードとOS連携
+:PROPERTIES:
+:CUSTOM_ID: dashboard-and-platform-integration
+:END:
+
+起動画面とOS固有のブラウザー・修飾キー設定をまとめ、最後に起動時間を通知する。
+
+** ダッシュボード
+:PROPERTIES:
+:CUSTOM_ID: dashboard
+:END:
+
+起動後に最近使ったファイル、プロジェクト、アジェンダを中央寄せで表示する。
+
+#+begin_src emacs-lisp
+(use-package dashboard
+  :demand t
+  :custom
+  (dashboard-startup-banner 'logo)
+  (dashboard-center-content t)
+  (dashboard-items '((recents . 8) (projects . 5) (agenda . 5)))
+  :config (dashboard-setup-startup-hook))
+#+end_src
+
+** OS連携
+:PROPERTIES:
+:CUSTOM_ID: platform-integration
+:END:
+
+WSLでは利用可能ならwslviewを介してWindows側のブラウザーを開く。Windowsでは左Windows
+キーをSuperとしてEmacsへ渡す。
+
+#+begin_src emacs-lisp
+(when my/is-wsl
+  (setq browse-url-generic-program "wslview"
+        browse-url-browser-function
+        (if (executable-find "wslview") #'browse-url-generic #'browse-url-default-browser)))
+
+(when my/is-windows
+  (setq w32-pass-lwindow-to-system nil
+        w32-lwindow-modifier 'super))
+#+end_src
+
+** 起動時間
+:PROPERTIES:
+:CUSTOM_ID: startup-time
+:END:
+
+初期化完了時に所要時間とGC回数をエコーエリアへ表示する。
+
+#+begin_src emacs-lisp
+(add-hook 'emacs-startup-hook
+          (lambda ()
+            (message "Emacs ready in %.2fs with %d GCs"
+                     (float-time (time-subtract after-init-time before-init-time))
+                     gcs-done)))
+
+;;; init.el ends here
+#+end_src

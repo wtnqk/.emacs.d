@@ -1,4 +1,4 @@
-;;; init.el --- Generated from config.org -*- lexical-binding: t; -*-
+;;; init.el --- Generated from init.org -*- lexical-binding: t; -*-
 
 (defvar bootstrap-version)
 (let ((bootstrap-file
@@ -87,7 +87,6 @@
   :demand t
   :config
   (general-create-definer my/leader
-    :states '(normal insert visual emacs)
     :prefix "C-c SPC")
   (my/leader
     "f f" '(find-file :which-key "find file")
@@ -96,14 +95,40 @@
     "p p" '(project-switch-project :which-key "switch project")
     "p f" '(project-find-file :which-key "project file")
     "s r" '(consult-ripgrep :which-key "ripgrep")
+    "s m" '(symon-mode :which-key "system monitor")
     "g g" '(magit-status :which-key "magit")
+    "g d" '(difftastic-magit-diff :which-key "difftastic diff")
+    "g t" '(git-timemachine :which-key "git time machine")
+    "g m" '(git-messenger :which-key "git blame")
+    "g l" '(git-link :which-key "git link")
     "k k" '(kubernetes-overview :which-key "kubernetes")
     "o a" '(org-agenda :which-key "agenda")
     "o c" '(org-capture :which-key "capture")
     "o r" '(org-roam-node-find :which-key "roam node")
     "o s" '(my/org-roam-rg :which-key "search notes")
     "m m" '(mu4e :which-key "mail")
+    "r t" '(consult-tramp :which-key "remote files")
     "r r" '(elfeed :which-key "RSS")))
+
+(use-package key-chord
+  :demand t
+  :custom (key-chord-two-keys-delay 0.1)
+  :config
+  (key-chord-mode 1)
+  (key-chord-define-global "fj" #'view-mode)
+  (key-chord-define-global "jf" #'view-mode))
+
+(use-package key-combo
+  :hook ((typescript-mode . key-combo-mode)
+         (web-mode . key-combo-mode)))
+
+(use-package dmacro
+  :demand t
+  :config (global-dmacro-mode 1))
+
+(use-package god-mode
+  :commands god-mode
+  :bind ("C-c SPC k g" . god-mode))
 
 (use-package vundo :bind ("C-x u" . vundo))
 (use-package rainbow-delimiters :hook (prog-mode . rainbow-delimiters-mode))
@@ -112,19 +137,28 @@
 (defun my/tangle-config-on-save ()
   "Tangle this literate configuration after saving it."
   (when (file-equal-p buffer-file-name
-                      (expand-file-name "config.org" user-emacs-directory))
+                      (expand-file-name "init.org" user-emacs-directory))
     (org-babel-tangle)))
 (add-hook 'org-mode-hook
           (lambda ()
             (when (and buffer-file-name
                        (file-equal-p buffer-file-name
-                                     (expand-file-name "config.org" user-emacs-directory)))
+                                     (expand-file-name "init.org" user-emacs-directory)))
               (add-hook 'after-save-hook #'my/tangle-config-on-save nil t))))
+
+(straight-use-package
+ '(doom-everforest-theme
+   :type git
+   :host github
+   :repo "Cardoso1994/doom-everforest-theme"))
+(add-to-list 'custom-theme-load-path
+             (expand-file-name "straight/build/doom-everforest-theme"
+                               user-emacs-directory))
 
 (use-package doom-themes
   :demand t
   :config
-  (load-theme 'doom-one t)
+  (load-theme 'doom-everforest t)
   (doom-themes-org-config))
 
 (use-package nerd-icons)
@@ -140,12 +174,14 @@
   :config (nerd-icons-completion-mode 1))
 
 (when (display-graphic-p)
-  (let ((font (cond
-               ((find-font (font-spec :name "JetBrains Mono")) "JetBrains Mono-12")
-               ((find-font (font-spec :name "Hack")) "Hack-12"))))
-    (when font (set-frame-font font nil t)))
-  (dolist (charset '(japanese-jisx0208 japanese-jisx0212 katakana-jisx0201))
-    (set-fontset-font t charset (font-spec :family "Noto Sans CJK JP") nil 'append)))
+  (let ((font-name (if (find-font (font-spec :name "HackGen Console NF"))
+                       "HackGen Console NF-12"
+                     "Hack-12")))
+    (set-frame-font font-name nil t)
+    (dolist (charset '(japanese-jisx0208 japanese-jisx0212 katakana-jisx0201))
+      (set-fontset-font t charset
+                        (font-spec :family "HackGen Console NF")
+                        nil 'append))))
 
 (when my/is-mac
   (setq mac-command-modifier 'meta
@@ -164,6 +200,7 @@
   (completion-category-overrides '((file (styles partial-completion)))))
 
 (use-package marginalia :demand t :config (marginalia-mode 1))
+
 (use-package consult
   :bind (("C-s" . consult-line)
          ("C-x b" . consult-buffer)
@@ -189,12 +226,75 @@
   (add-to-list 'completion-at-point-functions #'cape-dabbrev))
 
 (use-package project :straight nil)
-(use-package magit :commands magit-status)
+(use-package magit
+  :commands magit-status
+  :custom
+  (magit-diff-refine-hunk 'all)
+  (magit-diff-paint-whitespace 'untrailing))
+(use-package difftastic
+  :demand t
+  :custom (difftastic-executable (or (executable-find "difft") "difft"))
+  :config
+  (require 'difftastic-bindings)
+  (difftastic-bindings-mode 1))
+(use-package magit-gitflow
+  :after magit)
 (use-package git-modes)
+(use-package git-messenger
+  :commands git-messenger)
+(use-package git-link
+  :commands git-link)
 (use-package diff-hl
   :hook ((prog-mode . diff-hl-mode)
-         (dired-mode . diff-hl-dired-mode)))
-(use-package git-timemachine :commands git-timemachine)
+         (dired-mode . diff-hl-dired-mode))
+  :config
+  (with-eval-after-load 'magit
+    (require 'diff-hl-magit)
+    (add-hook 'magit-post-refresh-hook #'diff-hl-magit-post-refresh)))
+(use-package git-timemachine
+  :commands git-timemachine)
+
+(use-package tramp
+  :straight nil
+  :custom (tramp-default-method "ssh"))
+
+(use-package docker-tramp
+  :straight (:host github :repo "emacs-pe/docker-tramp.el")
+  :config (docker-tramp-add-method))
+
+(use-package consult-tramp
+  :straight (:host github :repo "Ladicle/consult-tramp")
+  :after consult
+  :commands consult-tramp)
+
+(use-package dired
+  :straight nil
+  :custom
+  (dired-dwim-target t)
+  (dired-hide-details-hide-symlink-targets nil)
+  (dired-listing-switches "-alh")
+  (dired-recursive-copies 'always)
+  (dired-use-ls-dired nil)
+  :hook (dired-mode . (lambda () (display-line-numbers-mode -1))))
+
+(use-package diredfl
+  :config (diredfl-global-mode 1))
+
+(use-package nerd-icons-dired
+  :hook (dired-mode . nerd-icons-dired-mode))
+
+(use-package dired-collapse
+  :hook (dired-mode . dired-collapse-mode))
+
+(use-package dired-narrow
+  :bind (:map dired-mode-map
+              ("/" . dired-narrow)))
+
+(use-package symon
+  :demand t
+  :custom (symon-delay 2)
+  :config (symon-mode 1))
+
 (use-package flycheck :hook (prog-mode . flycheck-mode))
 (use-package yasnippet :config (yas-global-mode 1))
 (use-package yasnippet-snippets :after yasnippet)
@@ -219,12 +319,56 @@
 (use-package lsp-treemacs :after lsp-mode)
 (use-package dap-mode :after lsp-mode :commands dap-debug)
 
+(use-package flycheck
+  :demand t
+  :custom
+  (flycheck-check-syntax-automatically '(save mode-enabled))
+  (flycheck-display-errors-delay 0.3)
+  :config
+  (global-flycheck-mode 1))
+
+(use-package flycheck-pos-tip
+  :after flycheck
+  :demand t
+  :config
+  (flycheck-pos-tip-mode 1))
+
+(use-package flycheck-elsa
+  :after flycheck
+  :demand t)
+
+(use-package flycheck-projectile
+  :after (flycheck projectile)
+  :commands flycheck-projectile-list-errors)
+
+
+(use-package avy
+  :bind (("M-g c" . avy-goto-char-timer)
+         ("M-g w" . avy-goto-word-1)
+         ("M-g l" . avy-goto-line)))
+
+(use-package avy-zap
+  :after avy
+  :bind (("M-z" . avy-zap-to-char)
+         ("M-Z" . avy-zap-up-to-char)))
+
+(use-package expand-region
+  :bind (("C-=" . er/expand-region)
+         ("C--" . er/contract-region)))
+
+(use-package multiple-cursors
+  :bind (("C->" . mc/mark-next-like-this)
+         ("C-<" . mc/mark-previous-like-this)
+         ("C-c C-<" . mc/mark-all-like-this)
+         ("C-c C-RET" . mc/edit-lines)))
+
 (use-package python :straight nil :hook (python-ts-mode . lsp-deferred))
 (use-package go-mode :mode "\\.go\\'" :hook (go-mode . lsp-deferred))
 (use-package rust-mode
   :mode "\\.rs\\'"
   :custom (rust-format-on-save t)
   :hook (rust-mode . lsp-deferred))
+
 (use-package typescript-mode :mode "\\.ts\\'" :hook (typescript-mode . lsp-deferred))
 (use-package web-mode
   :mode (("\\.tsx\\'" . web-mode)
@@ -232,21 +376,25 @@
          ("\\.svelte\\'" . web-mode))
   :hook (web-mode . lsp-deferred))
 (use-package svelte-mode :mode "\\.svelte\\'" :hook (svelte-mode . lsp-deferred))
+
 (use-package yaml-mode :mode "\\.ya?ml\\'" :hook (yaml-mode . lsp-deferred))
 (use-package toml-mode :mode "\\.toml\\'" :hook (toml-mode . lsp-deferred))
 (use-package json-mode :mode "\\.json\\'" :hook (json-mode . lsp-deferred))
 (use-package lua-mode :mode "\\.lua\\'" :hook (lua-mode . lsp-deferred))
+
 (use-package erlang :mode "\\.erl\\'" :hook (erlang-mode . lsp-deferred))
 (use-package elixir-mode :mode "\\.exs?\\'" :hook (elixir-mode . lsp-deferred))
 (use-package gleam-ts-mode :mode "\\.gleam\\'" :hook (gleam-ts-mode . lsp-deferred))
 (use-package haskell-mode :mode "\\.hs\\'" :hook (haskell-mode . lsp-deferred))
 (use-package tuareg :mode "\\.mli?\\'" :hook (tuareg-mode . lsp-deferred))
 (use-package kotlin-mode :mode "\\.kts?\\'" :hook (kotlin-mode . lsp-deferred))
+
 (use-package sql :straight nil :hook (sql-mode . lsp-deferred))
 (use-package markdown-mode
   :mode (("README\\.md\\'" . gfm-mode) ("\\.md\\'" . markdown-mode))
   :hook (markdown-mode . lsp-deferred))
 (use-package typst-ts-mode :mode "\\.typ\\'" :hook (typst-ts-mode . lsp-deferred))
+
 (use-package zig-mode
   :mode "\\.zig\\'"
   :custom (zig-format-on-save nil)
@@ -263,6 +411,7 @@
 (use-package ansible
   :hook (yaml-mode . my/ansible-maybe-enable))
 (use-package ansible-doc :after ansible)
+
 (use-package apache-mode
   :mode (("/\\.htaccess\\'" . apache-mode)
          ("/apache2/.*\\.conf\\'" . apache-mode)
@@ -272,6 +421,7 @@
                           ("\\.bzl\\'" . bazel-mode)))
 (use-package conf-mode :straight nil :mode ("\\.cnf\\'" . conf-mode))
 (use-package csv-mode :mode (("\\.csv\\'" . csv-mode) ("\\.tsv\\'" . csv-mode)))
+
 (use-package docker-compose-mode
   :mode (("compose\\.ya?ml\\'" . docker-compose-mode)
          ("docker-compose.*\\.ya?ml\\'" . docker-compose-mode)))
@@ -280,9 +430,11 @@
          ("\\.dockerfile\\'" . dockerfile-mode)))
 (use-package elm-mode :mode "\\.elm\\'" :hook (elm-mode . lsp-deferred))
 (use-package fish-mode :mode (("\\.fish\\'" . fish-mode) ("/config\\.fish\\'" . fish-mode)))
+
 (use-package hcl-mode :mode (("\\.hcl\\'" . hcl-mode) ("\\.tfvars\\'" . hcl-mode)))
 (use-package ini-mode :mode "\\.ini\\'")
 (use-package just-mode :mode (("/[Jj]ustfile\\'" . just-mode) ("\\.just\\'" . just-mode)))
+
 (use-package k8s-mode
   :mode (("/k8s/.*\\.ya?ml\\'" . k8s-mode)
          ("/kubernetes/.*\\.ya?ml\\'" . k8s-mode)
@@ -307,12 +459,14 @@
   :commands (kubernetes-helm-template kubernetes-helm-install
              kubernetes-helm-upgrade kubernetes-helm-status))
 (use-package kubernetes :commands kubernetes-overview)
+
 (use-package mermaid-mode :mode (("\\.mmd\\'" . mermaid-mode) ("\\.mermaid\\'" . mermaid-mode)))
 (use-package make-mode :straight nil :mode ("\\.mk\\'" . makefile-mode))
 (use-package nginx-mode
   :mode (("nginx\\.conf\\'" . nginx-mode)
          ("/nginx/.*\\.conf\\'" . nginx-mode)))
 (use-package scss-mode :mode (("\\.scss\\'" . scss-mode) ("\\.sass\\'" . scss-mode)))
+
 (use-package ssh-config-mode
   :mode (("/\\.ssh/config\\(?:\\.d/.*\\.conf\\)?\\'" . ssh-config-mode)
          ("/sshd?_config\\(?:\\.d/.*\\.conf\\)?\\'" . ssh-config-mode)
@@ -344,6 +498,7 @@
            "* %?\n  %U\n  %a"))))
 
 (use-package org-modern :hook (org-mode . org-modern-mode))
+
 (use-package org-roam
   :custom
   (org-roam-directory (file-truename (expand-file-name "roam" org-directory)))

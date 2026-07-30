@@ -1,4 +1,4 @@
-;;; early-init.el --- Generated from config.org -*- lexical-binding: t; -*-
+;;; early-init.el --- Generated from init.org -*- lexical-binding: t; -*-
 
 (setq package-enable-at-startup nil
       frame-inhibit-implied-resize t
@@ -8,12 +8,14 @@
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
-(setq inhibit-startup-screen t
-      inhibit-startup-echo-area-message user-login-name)
 
 (add-to-list 'default-frame-alist '(vertical-scroll-bars . nil))
 (add-to-list 'default-frame-alist '(menu-bar-lines . 0))
 (add-to-list 'default-frame-alist '(tool-bar-lines . 0))
+(add-to-list 'default-frame-alist '(fullscreen . fullboth))
+
+(setq inhibit-startup-screen t
+      inhibit-startup-echo-area-message user-login-name)
 
 (when (getenv "WSL_DISTRO_NAME")
   (setenv "GTK_IM_MODULE" "ibus")
