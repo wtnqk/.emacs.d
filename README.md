@@ -24,6 +24,26 @@ takes a while. Install icon fonts afterward with
 - `C-c SPC o a`: agenda
 - `C-c SPC m m`: mu4e
 - `C-c SPC r r`: Elfeed
+- `C-=` / `C--`: expand or contract the selection
+- `M-.` / `M-,`: smart jump or jump back
+- `M-g c` / `M-g w` / `M-g l`: jump to a character, word, or line
+
+## Completion
+
+Minibuffer completion uses Vertico, Orderless, Marginalia, and Consult. In-buffer
+completion uses Corfu and Cape, with Prescient saving completion history and
+kind-icon showing candidate kinds. `TAB` completes at point.
+
+## Static checks
+
+Flycheck runs automatically when supported buffers are enabled and when they are
+saved. Use `C-c SPC s e` to show project-wide Flycheck errors.
+
+- Org buffers use the `textlint` checker through `npx`; install textlint and its
+  rules in the project being edited.
+- Emacs Lisp buffers use `flycheck-elsa`.
+- CloudFormation buffers use `flycheck-cfn`; install `cfn-lint` and `cfn_nag`
+  if those checks are needed.
 
 Mail account examples are in `mail/`. Copy their values into private files in
 the home directory and replace all placeholders before running `mu init`.

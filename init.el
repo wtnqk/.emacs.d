@@ -94,8 +94,9 @@
     "b b" '(consult-buffer :which-key "switch buffer")
     "p p" '(project-switch-project :which-key "switch project")
     "p f" '(project-find-file :which-key "project file")
-    "s r" '(consult-ripgrep :which-key "ripgrep")
-    "s m" '(symon-mode :which-key "system monitor")
+     "s r" '(consult-ripgrep :which-key "ripgrep")
+     "s e" '(flycheck-projectile-list-errors :which-key "project errors")
+     "s m" '(symon-mode :which-key "system monitor")
     "g g" '(magit-status :which-key "magit")
     "g d" '(difftastic-magit-diff :which-key "difftastic diff")
     "g t" '(git-timemachine :which-key "git time machine")
@@ -133,6 +134,8 @@
 (use-package vundo :bind ("C-x u" . vundo))
 (use-package rainbow-delimiters :hook (prog-mode . rainbow-delimiters-mode))
 (use-package editorconfig :config (editorconfig-mode 1))
+
+(autoload 'org-babel-tangle "ob-tangle" nil t)
 
 (defun my/tangle-config-on-save ()
   "Tangle this literate configuration after saving it."
@@ -212,18 +215,41 @@
 (use-package embark-consult :after (embark consult))
 (use-package affe :commands (affe-find affe-grep))
 
+;; wgrep: *grep*バッファを直接編集し、変更を各ファイルへ一括適用できるようにする。
+;; grep-modeの起動時にwgrep-setupでwgrep-modeを有効化する。
+(use-package wgrep
+  :hook (grep-setup-hook . wgrep-setup))
+
 (use-package corfu
   :demand t
   :custom
   (corfu-auto t)
+  (corfu-auto-delay 0.2)
   (corfu-cycle t)
+  (corfu-on-exact-match nil)
   (corfu-preselect 'prompt)
-  :config (global-corfu-mode 1))
+  :config
+  (global-corfu-mode 1))
 (use-package cape
   :demand t
   :init
   (add-to-list 'completion-at-point-functions #'cape-file)
-  (add-to-list 'completion-at-point-functions #'cape-dabbrev))
+  (add-to-list 'completion-at-point-functions #'cape-dabbrev)
+  (add-to-list 'completion-at-point-functions #'cape-elisp-block)
+  (add-to-list 'completion-at-point-functions #'cape-history)
+  (add-to-list 'completion-at-point-functions #'cape-keyword))
+
+(use-package prescient
+  :demand t
+  :custom (prescient-aggressive-file-save t)
+  :config (prescient-persist-mode 1))
+
+(use-package kind-icon
+  :after corfu
+  :config
+  (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
+
+(setq tab-always-indent 'complete)
 
 (use-package project :straight nil)
 (use-package magit
@@ -237,20 +263,22 @@
   :config
   (require 'difftastic-bindings)
   (difftastic-bindings-mode 1))
+(use-package git-modes)
 (use-package magit-gitflow
   :after magit)
-(use-package git-modes)
 (use-package git-messenger
   :commands git-messenger)
 (use-package git-link
   :commands git-link)
+(declare-function diff-hl-magit-post-refresh "diff-hl-magit")
+
 (use-package diff-hl
   :hook ((prog-mode . diff-hl-mode)
          (dired-mode . diff-hl-dired-mode))
   :config
   (with-eval-after-load 'magit
-    (require 'diff-hl-magit)
-    (add-hook 'magit-post-refresh-hook #'diff-hl-magit-post-refresh)))
+    (when (require 'diff-hl-magit nil t)
+      (add-hook 'magit-post-refresh-hook #'diff-hl-magit-post-refresh))))
 (use-package git-timemachine
   :commands git-timemachine)
 
@@ -277,6 +305,14 @@
   (dired-use-ls-dired nil)
   :hook (dired-mode . (lambda () (display-line-numbers-mode -1))))
 
+;; wdired: Diredバッファでファイル名やpermissionを直接編集できるようにする。
+;; Emacs標準機能のため取得は不要。diredで「r」を押すと編集モードに入る。
+(use-package wdired
+  :straight nil
+  :custom (wdired-allow-to-change-permissions 'advanced)
+  :bind (:map dired-mode-map
+              ("r" . wdired-change-to-wdired-mode)))
+
 (use-package diredfl
   :config (diredfl-global-mode 1))
 
@@ -295,9 +331,23 @@
   :custom (symon-delay 2)
   :config (symon-mode 1))
 
-(use-package flycheck :hook (prog-mode . flycheck-mode))
+(use-package flycheck
+  :demand t
+  :custom
+  (flycheck-check-syntax-automatically '(save mode-enabled))
+  (flycheck-display-errors-delay 0.3)
+  :config
+  (global-flycheck-mode 1))
+
+(use-package flycheck-pos-tip
+  :after flycheck
+  :demand t
+  :config
+  (flycheck-pos-tip-mode 1))
 (use-package yasnippet :config (yas-global-mode 1))
 (use-package yasnippet-snippets :after yasnippet)
+(declare-function global-treesit-auto-mode "treesit-auto")
+
 (use-package treesit-auto
   :custom (treesit-auto-install 'prompt)
   :config (global-treesit-auto-mode 1))
@@ -319,28 +369,42 @@
 (use-package lsp-treemacs :after lsp-mode)
 (use-package dap-mode :after lsp-mode :commands dap-debug)
 
-(use-package flycheck
-  :demand t
-  :custom
-  (flycheck-check-syntax-automatically '(save mode-enabled))
-  (flycheck-display-errors-delay 0.3)
-  :config
-  (global-flycheck-mode 1))
+(use-package flymake-proc)
 
-(use-package flycheck-pos-tip
-  :after flycheck
-  :demand t
-  :config
-  (flycheck-pos-tip-mode 1))
+(with-eval-after-load 'flycheck
+  (flycheck-define-checker textlint
+    "A linter for prose."
+    :command ("npx" "textlint" "--format" "unix" source-inplace)
+    :error-patterns
+    ((warning line-start (file-name) ":" line ":" column ": "
+              (id (one-or-more (not (any " "))))
+              (message (one-or-more not-newline)
+                       (zero-or-more "\n" (any " ") (one-or-more not-newline)))
+              line-end))
+    :modes (org-mode))
+  (add-to-list 'flycheck-checkers 'textlint))
 
 (use-package flycheck-elsa
   :after flycheck
-  :demand t)
+  :demand t
+  :config
+  (with-eval-after-load 'elisp-mode
+    (add-hook 'emacs-lisp-mode-hook #'flycheck-elsa-setup)))
 
 (use-package flycheck-projectile
   :after (flycheck projectile)
   :commands flycheck-projectile-list-errors)
 
+(use-package cfn-mode
+  :commands cfn-mode
+  :config
+  (add-to-list 'magic-mode-alist
+               '("\\(?:---\\n\\)?AWSTemplateFormatVersion:" . cfn-mode)))
+
+(use-package flycheck-cfn
+  :after cfn-mode
+  :commands flycheck-cfn-setup
+  :hook (cfn-mode . flycheck-cfn-setup))
 
 (use-package avy
   :bind (("M-g c" . avy-goto-char-timer)
@@ -361,6 +425,15 @@
          ("C-<" . mc/mark-previous-like-this)
          ("C-c C-<" . mc/mark-all-like-this)
          ("C-c C-RET" . mc/edit-lines)))
+
+(use-package smartparens)
+
+(use-package smart-jump
+  :commands (smart-jump-go smart-jump-back smart-jump-references)
+  :custom (smart-jump-bind-keys nil)
+  :bind (("M-." . smart-jump-go)
+         ("M-," . smart-jump-back)
+         ("M-?" . smart-jump-references)))
 
 (use-package python :straight nil :hook (python-ts-mode . lsp-deferred))
 (use-package go-mode :mode "\\.go\\'" :hook (go-mode . lsp-deferred))
@@ -479,6 +552,16 @@
 (use-package terraform-mode :mode "\\.tf\\'" :hook (terraform-mode . lsp-deferred))
 (use-package tmux-mode :mode (("\\.tmux\\.conf\\'" . tmux-mode) ("/tmux\\.conf\\'" . tmux-mode)))
 
+(declare-function my/org-week-monday "init")
+(declare-function my/org-daily-files-this-week "init")
+(declare-function my/org-extract-heading-body "init")
+
+(defcustom my/org-hugo-base-dir
+    (expand-file-name "hugo" (or (bound-and-true-p org-directory) "~/00.orgs"))
+  "Root directory of the Hugo site used by ox-hugo."
+  :type 'directory
+  :group 'org)
+
 (use-package org
   :straight nil
   :mode ("\\.org\\'" . org-mode)
@@ -490,14 +573,118 @@
   (org-startup-indented t)
   (org-hide-emphasis-markers t)
   (org-return-follows-link t)
+  (org-clock-into-drawer t)
+  (org-clock-out-when-done t)
+  (org-clock-persist 'history)
   :config
+  (org-clock-persistence-insinuate)
+  (defun my/org-capture-daily-file ()
+    "Return today's daily report file path, creating the directory if needed."
+    (expand-file-name (format-time-string "daily/%Y-%m-%d.org") org-directory))
+  (defun my/org-capture-weekly-file ()
+    "Return this week's weekly report file path."
+    (expand-file-name (format-time-string "weekly/%G-W%V.org") org-directory))
+  (defun my/org-capture-meeting-file ()
+    "Return a new timestamped meeting note file path."
+    (expand-file-name (format-time-string "meetings/%Y-%m-%d-%H%M.org") org-directory))
+  (defun my/org-capture-project-file ()
+    "Return a new timestamped project note file path."
+    (expand-file-name (format-time-string "projects/%Y-%m-%d-%H%M.org") org-directory))
+  (defun my/org-capture-tech-note-file ()
+    "Return a new timestamped tech note file path."
+    (expand-file-name (format-time-string "notes/%Y-%m-%d-%H%M.org") org-directory))
+  (defun my/org-capture-hugo-file ()
+    "Return a new timestamped Hugo post file path."
+    (let ((directory (expand-file-name "hugo/org" org-directory)))
+      (make-directory directory t)
+      (expand-file-name (format-time-string "%Y-%m-%d-%H%M.org") directory)))
+  (defun my/org-week-monday (&optional time)
+    "Return encoded time for Monday 00:00 of the ISO week containing TIME."
+    (let* ((time (or time (current-time)))
+           (dow (nth 6 (decode-time time)))
+           (iso-dow (if (= dow 0) 7 dow))
+           (today-midnight (apply #'encode-time
+                                   (append '(0 0 0) (nthcdr 3 (decode-time time))))))
+      (time-subtract today-midnight (days-to-time (1- iso-dow)))))
+  (defun my/org-daily-files-this-week ()
+    "Return daily report file paths whose date falls in the current ISO week, sorted."
+    (let ((dir (expand-file-name "daily" org-directory)))
+      (when (file-directory-p dir)
+        (let* ((monday (time-convert (my/org-week-monday) 'integer))
+               (sunday (+ monday (* 7 86400) -1)))
+          (sort
+           (seq-filter
+            (lambda (f)
+              (let* ((name (file-name-base f))
+                     (parsed (ignore-errors
+                               (encode-time 0 0 0
+                                            (string-to-number (substring name 8 10))
+                                            (string-to-number (substring name 5 7))
+                                            (string-to-number (substring name 0 4))))))
+                (and parsed
+                     (let ((secs (time-convert parsed 'integer)))
+                       (and (>= secs monday) (<= secs sunday))))))
+            (directory-files dir t "\\`[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\.org\\'"))
+           #'string<)))))
+  (defun my/org-extract-heading-body (file heading)
+    "Return trimmed body text under the first HEADING found in FILE."
+    (when (file-exists-p file)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (when (re-search-forward (format "^\\*+[ \t]+%s[ \t]*$" (regexp-quote heading)) nil t)
+          (forward-line 1)
+          (let ((start (point))
+                (end (save-excursion
+                       (if (re-search-forward "^\\*+[ \t]" nil t)
+                           (match-beginning 0)
+                         (point-max)))))
+            (string-trim (buffer-substring-no-properties start end)))))))
+  (defun my/org-capture-weekly-aggregate ()
+    "Build an aggregated Org string from this week's daily reports."
+    (let ((files (my/org-daily-files-this-week)))
+      (if (null files)
+          "（今週のdailyファイルが見つかりませんでした）"
+        (mapconcat
+         (lambda (f)
+           (let ((body (my/org-extract-heading-body f "今日やったこと")))
+             (format "** %s\n%s"
+                     (file-name-base f)
+                     (if (and body (not (string-empty-p body))) body "  (記載なし)"))))
+         files
+         "\n\n"))))
   (setq org-capture-templates
-        '(("t" "Todo" entry (file+headline org-default-notes-file "Inbox")
+        `(("t" "Todo" entry (file+headline org-default-notes-file "Inbox")
            "* TODO %?\n  %U\n  %a")
           ("n" "Note" entry (file+headline org-default-notes-file "Notes")
-           "* %?\n  %U\n  %a"))))
+           "* %?\n  %U\n  %a")
+          ("N" "New file from template")
+          ("Nd" "Daily Report" plain (file my/org-capture-daily-file)
+           (file ,(expand-file-name "templates/daily-report.org" org-directory)))
+          ("Nw" "Weekly Report" plain (file my/org-capture-weekly-file)
+           (file ,(expand-file-name "templates/weekly-report.org" org-directory)))
+          ("Nm" "Meeting" plain (file my/org-capture-meeting-file)
+           (file ,(expand-file-name "templates/meeting.org" org-directory)))
+           ("Np" "Project" plain (file my/org-capture-project-file)
+            (file ,(expand-file-name "templates/project.org" org-directory)))
+           ("Nn" "Tech Note" plain (file my/org-capture-tech-note-file)
+            (file ,(expand-file-name "templates/tech-note.org" org-directory)))
+           ("Nh" "Hugo Post" plain (file my/org-capture-hugo-file)
+            (file ,(expand-file-name "templates/hugo-post.org" org-directory))))))
 
-(use-package org-modern :hook (org-mode . org-modern-mode))
+(use-package ox-hugo
+  :after ox
+  :commands (org-hugo-export-as-md
+             org-hugo-export-to-md
+             org-hugo-export-wim-to-md
+             org-hugo-debug-info)
+  :custom
+  (org-hugo-base-dir my/org-hugo-base-dir)
+  (org-hugo-auto-set-lastmod t))
+
+(use-package org-modern
+  :hook ((org-mode . org-modern-mode)
+         (org-agenda-finalize . org-modern-agenda)))
 
 (use-package org-roam
   :custom
@@ -537,13 +724,34 @@
   :custom (rmh-elfeed-org-files (list (expand-file-name "feeds.org" org-directory)))
   :config (elfeed-org))
 
+(defun my/dashboard-insert-daily-notes (list-size)
+  "Insert a list of the most recent daily report files."
+  (let* ((dir (expand-file-name "daily"
+                                 (if (boundp 'org-directory)
+                                     org-directory
+                                   (expand-file-name "~/00.orgs"))))
+         (files (when (file-directory-p dir)
+                  (sort (directory-files dir t "\\.org\\'") #'string>)))
+         (files (dashboard-subseq files list-size)))
+    (dashboard-insert-section
+     "Daily Reports:"
+     files
+     list-size
+     'daily
+     (dashboard-get-shortcut 'daily)
+     `(lambda (&rest _) (find-file-existing ,el))
+     (file-name-nondirectory el))))
+
 (use-package dashboard
   :demand t
   :custom
   (dashboard-startup-banner 'logo)
   (dashboard-center-content t)
-  (dashboard-items '((recents . 8) (projects . 5) (agenda . 5)))
-  :config (dashboard-setup-startup-hook))
+  (dashboard-items '((daily . 7) (recents . 8) (projects . 5) (agenda . 5)))
+  :config
+  (add-to-list 'dashboard-item-generators '(daily . my/dashboard-insert-daily-notes))
+  (add-to-list 'dashboard-item-shortcuts '(daily . "d"))
+  (dashboard-setup-startup-hook))
 
 (when my/is-wsl
   (setq browse-url-generic-program "wslview"
@@ -553,6 +761,29 @@
 (when my/is-windows
   (setq w32-pass-lwindow-to-system nil
         w32-lwindow-modifier 'super))
+
+(defun my/wsl-copy (text &optional _push)
+  "Copy TEXT to the WSLg system clipboard without affecting the kill ring."
+  (let ((wl-copy (executable-find "wl-copy")))
+    (when (and wl-copy (stringp text))
+      (with-temp-buffer
+        (insert text)
+        (ignore-errors
+          (call-process-region (point-min) (point-max) wl-copy nil 0 nil))))))
+
+(defun my/wsl-paste ()
+  "Return WSLg clipboard contents, or nil when unavailable."
+  (let ((wl-paste (executable-find "wl-paste")))
+    (when wl-paste
+      (with-temp-buffer
+        (let ((status (ignore-errors
+                        (call-process wl-paste nil t nil "--no-newline"))))
+          (when (and (integerp status) (zerop status))
+            (buffer-string)))))))
+
+(when my/is-wsl
+ (setq interprogram-cut-function #'my/wsl-copy)
+ (setq interprogram-paste-function #'my/wsl-paste))
 
 (add-hook 'emacs-startup-hook
           (lambda ()

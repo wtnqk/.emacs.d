@@ -1,9 +1,16 @@
 ;;; early-init.el --- Generated from init.org -*- lexical-binding: t; -*-
 
 (setq package-enable-at-startup nil
+      load-prefer-newer t
       frame-inhibit-implied-resize t
       gc-cons-threshold most-positive-fixnum
       gc-cons-percentage 0.6)
+
+;; WSLg はフレームサイズが文字グリッドの倍数からずれると、端数ピクセル分が
+;; 白帯として描画されることがある。pixelwise なリサイズを許可することで、
+;; フレームを画面（ワークエリア）のピクセルサイズに厳密に合わせられるようにする。
+(setq frame-resize-pixelwise t
+      window-resize-pixelwise t)
 
 (menu-bar-mode -1)
 (tool-bar-mode -1)
@@ -12,7 +19,6 @@
 (add-to-list 'default-frame-alist '(vertical-scroll-bars . nil))
 (add-to-list 'default-frame-alist '(menu-bar-lines . 0))
 (add-to-list 'default-frame-alist '(tool-bar-lines . 0))
-(add-to-list 'default-frame-alist '(fullscreen . fullboth))
 
 (setq inhibit-startup-screen t
       inhibit-startup-echo-area-message user-login-name)

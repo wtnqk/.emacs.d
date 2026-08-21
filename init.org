@@ -31,10 +31,13 @@
 初期化中はGCの閾値を最大化し、フレームサイズの暗黙的な再計算を止める。通常利用向けの
 GC設定はinitファイルで初期化が終わった後に設定し直す。
 
+使い方: 操作は不要。起動時の負荷を抑えるための設定で、通常利用時は自動的に戻る。
+
 #+begin_src emacs-lisp :tangle early-init.el
 ;;; early-init.el --- Generated from init.org -*- lexical-binding: t; -*-
 
 (setq package-enable-at-startup nil
+      load-prefer-newer t
       frame-inhibit-implied-resize t
       gc-cons-threshold most-positive-fixnum
       gc-cons-percentage 0.6)
@@ -45,10 +48,25 @@ GC設定はinitファイルで初期化が終わった後に設定し直す。
 :CUSTOM_ID: initial-frame
 :END:
 
-メニュー、ツールバー、スクロールバーを隠し、GUIフレームをフルスクリーンで開く。
-フルスクリーンはEmacs標準の =F11= で切り替えられる。
+メニュー、ツールバー、スクロールバーを隠す。フレームは =fullscreen= を指定せず、
+Emacs標準のデフォルトサイズで開く（フルスクリーン・最大化はしない）。
+
+WSLg環境では、フレームサイズが文字グリッドの倍数からずれると端数ピクセル分が
+白帯として描画されることがある。=frame-resize-pixelwise= / =window-resize-pixelwise=
+を有効にし、フレームを画面のピクセルサイズに厳密に合わせられるようにすることで
+これを防ぐ。マルチディスプレイでの真のフルスクリーン（=fullboth=）はWMによっては
+全ディスプレイにまたがって描画され他画面の操作を阻害するため使用しない。
+真のフルスクリーンが必要な場合はEmacs標準の =F11= で切り替えられる。
+
+使い方: =F11= でフルスクリーンを切り替える。WSLgの白帯対策も自動で適用される。
 
 #+begin_src emacs-lisp :tangle early-init.el
+;; WSLg はフレームサイズが文字グリッドの倍数からずれると、端数ピクセル分が
+;; 白帯として描画されることがある。pixelwise なリサイズを許可することで、
+;; フレームを画面（ワークエリア）のピクセルサイズに厳密に合わせられるようにする。
+(setq frame-resize-pixelwise t
+      window-resize-pixelwise t)
+
 (menu-bar-mode -1)
 (tool-bar-mode -1)
 (scroll-bar-mode -1)
@@ -56,7 +74,6 @@ GC設定はinitファイルで初期化が終わった後に設定し直す。
 (add-to-list 'default-frame-alist '(vertical-scroll-bars . nil))
 (add-to-list 'default-frame-alist '(menu-bar-lines . 0))
 (add-to-list 'default-frame-alist '(tool-bar-lines . 0))
-(add-to-list 'default-frame-alist '(fullscreen . fullboth))
 #+end_src
 
 ** スタートアップ画面
@@ -65,6 +82,8 @@ GC設定はinitファイルで初期化が終わった後に設定し直す。
 :END:
 
 Emacs標準のスタートアップ画面を表示せず、後段でdashboardを初期画面にする。
+
+使い方: 起動時は通常のスタートアップ画面の代わりにDashboardが表示される。
 
 #+begin_src emacs-lisp :tangle early-init.el
 (setq inhibit-startup-screen t
@@ -78,6 +97,8 @@ Emacs標準のスタートアップ画面を表示せず、後段でdashboardを
 
 WSLではGUIツールキットがIBusを利用するよう環境変数を揃える。デーモンが未起動の場合だけ
 バックグラウンドで起動する。
+
+使い方: WSLでのみ自動適用される。IBusを使わない環境では何も実行しない。
 
 #+begin_src emacs-lisp :tangle early-init.el
 (when (getenv "WSL_DISTRO_NAME")
@@ -105,6 +126,9 @@ WSLではGUIツールキットがIBusを利用するよう環境変数を揃え�
 
 straight.elを初回だけ公式インストーラーから導入し、use-packageから宣言したパッケージを
 straight.elで取得する。
+
+使い方: パッケージを追加するときは、このファイルの =use-package= ブロックへ宣言を書く。
+初回起動時にstraight.elが取得・ビルドする。
 
 #+begin_src emacs-lisp
 ;;; init.el --- Generated from init.org -*- lexical-binding: t; -*-
@@ -135,6 +159,8 @@ straight.elで取得する。
 
 Customizeが書き出す値を生成済みのinitファイルから分離し、存在する場合だけ読み込む。
 
+使い方: =M-x customize= の変更は =custom.el= に保存され、=init.org= とは分離される。
+
 #+begin_src emacs-lisp
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-readable-p custom-file)
@@ -147,6 +173,8 @@ Customizeが書き出す値を生成済みのinitファイルから分離し、�
 :END:
 
 OS固有設定を読みやすくするため、macOS、Windows、GNU/Linux、WSLの判定結果を定数にする。
+
+使い方: OS判定は内部で自動利用される。手動で値を変更する必要はない。
 
 #+begin_src emacs-lisp
 (defconst my/is-mac (eq system-type 'darwin))
@@ -165,6 +193,8 @@ OS固有設定を読みやすくするため、macOS、Windows、GNU/Linux、WSL
 
 各言語のパッケージマネージャーが配置する代表的なディレクトリを、存在する場合だけ
 =exec-path= と環境変数 =PATH= の両方へ追加する。
+
+使い方: =~/.local/bin=、=~/.cargo/bin= などへ導入した実行ファイルは、Emacs再起動後に利用できる。
 
 #+begin_src emacs-lisp
 (defun my/add-exec-path (directory)
@@ -185,6 +215,8 @@ OS固有設定を読みやすくするため、macOS、Windows、GNU/Linux、WSL
 
 no-litteringを使い、自動保存などの生成物を設定ディレクトリ直下に散らさない。
 
+使い方: 自動保存・履歴などの生成物はvarディレクトリへ自動的に分離される。
+
 #+begin_src emacs-lisp
 (use-package no-littering
   :demand t
@@ -200,6 +232,9 @@ no-litteringを使い、自動保存などの生成物を設定ディレクト�
 
 初期化後のGC、バックアップ、インデント、表示に関する全体設定を行う。行番号は通常の
 バッファで表示し、Orgやターミナルなど文章・端末中心のモードでは無効にする。
+
+使い方: 通常の編集では自動反映される。=C-x C-s= で保存し、外部変更は自動で取り込まれる。
+バックアップは複数世代保持され、タブは空白4文字、入力幅は100文字に設定される。
 
 #+begin_src emacs-lisp
 (setq gc-cons-threshold (* 64 1024 1024)
@@ -243,6 +278,9 @@ no-litteringを使い、自動保存などの生成物を設定ディレクト�
 which-keyで利用可能なキーを表示する。主要コマンドは =C-c SPC= から始まるリーダーキーへ
 集約し、ファイル、プロジェクト、検索、Org、メールへ一貫してアクセスできるようにする。
 
+使い方: =C-c SPC= を押してからwhich-keyの候補を確認する。例えば =C-c SPC f f= でファイルを開き、
+=C-c SPC p p= でプロジェクトを切り替える。
+
 #+begin_src emacs-lisp
 (use-package which-key
   :straight nil
@@ -253,7 +291,6 @@ which-keyで利用可能なキーを表示する。主要コマンドは =C-c SP
   :demand t
   :config
   (general-create-definer my/leader
-    :states '(normal insert visual emacs)
     :prefix "C-c SPC")
   (my/leader
     "f f" '(find-file :which-key "find file")
@@ -261,16 +298,51 @@ which-keyで利用可能なキーを表示する。主要コマンドは =C-c SP
     "b b" '(consult-buffer :which-key "switch buffer")
     "p p" '(project-switch-project :which-key "switch project")
     "p f" '(project-find-file :which-key "project file")
-    "s r" '(consult-ripgrep :which-key "ripgrep")
+     "s r" '(consult-ripgrep :which-key "ripgrep")
+     "s e" '(flycheck-projectile-list-errors :which-key "project errors")
+     "s m" '(symon-mode :which-key "system monitor")
     "g g" '(magit-status :which-key "magit")
     "g d" '(difftastic-magit-diff :which-key "difftastic diff")
+    "g t" '(git-timemachine :which-key "git time machine")
+    "g m" '(git-messenger :which-key "git blame")
+    "g l" '(git-link :which-key "git link")
     "k k" '(kubernetes-overview :which-key "kubernetes")
     "o a" '(org-agenda :which-key "agenda")
     "o c" '(org-capture :which-key "capture")
     "o r" '(org-roam-node-find :which-key "roam node")
     "o s" '(my/org-roam-rg :which-key "search notes")
     "m m" '(mu4e :which-key "mail")
+    "r t" '(consult-tramp :which-key "remote files")
     "r r" '(elfeed :which-key "RSS")))
+#+end_src
+
+Leaderキー以外にも、モーダル的な入力補助として key-chord（同時押しでのモード切替）、
+key-combo（言語別のキー連続入力補完）、dmacro（反復操作の自動検出・再生）、
+god-mode（修飾キーなしでのコマンド入力）を併用する。
+
+使い方: =fj= / =jf= でView mode、=C-c SPC k g= でGod modeを切り替える。TypeScriptとWeb-modeでは
+キーの連続入力をkey-comboが補完し、dmacroは繰り返し操作を次回入力へ再利用する。
+
+#+begin_src emacs-lisp
+(use-package key-chord
+  :demand t
+  :custom (key-chord-two-keys-delay 0.1)
+  :config
+  (key-chord-mode 1)
+  (key-chord-define-global "fj" #'view-mode)
+  (key-chord-define-global "jf" #'view-mode))
+
+(use-package key-combo
+  :hook ((typescript-mode . key-combo-mode)
+         (web-mode . key-combo-mode)))
+
+(use-package dmacro
+  :demand t
+  :config (global-dmacro-mode 1))
+
+(use-package god-mode
+  :commands god-mode
+  :bind ("C-c SPC k g" . god-mode))
 #+end_src
 
 ** 編集支援
@@ -279,6 +351,9 @@ which-keyで利用可能なキーを表示する。主要コマンドは =C-c SP
 :END:
 
 Undo履歴の可視化、括弧の色分け、EditorConfig連携を全体で利用する。
+
+使い方: =C-x u= でUndo履歴を視覚的に選び、プログラムバッファでは括弧の色分けを確認する。
+EditorConfigがあるプロジェクトではファイルを開いた時点で設定が適用される。
 
 #+begin_src emacs-lisp
 (use-package vundo :bind ("C-x u" . vundo))
@@ -294,7 +369,11 @@ Undo履歴の可視化、括弧の色分け、EditorConfig連携を全体で利�
 =init.org= 自身を保存したときだけ、バッファローカルな保存後フックで起動ファイルを
 再生成する。他のOrgファイルを保存してもtangleは実行しない。
 
+使い方: =init.org= を保存するだけで =init.el= と =early-init.el= がtangleされる。変更を反映するにはEmacsを再起動する。
+
 #+begin_src emacs-lisp
+(autoload 'org-babel-tangle "ob-tangle" nil t)
+
 (defun my/tangle-config-on-save ()
   "Tangle this literate configuration after saving it."
   (when (file-equal-p buffer-file-name
@@ -322,6 +401,8 @@ Undo履歴の可視化、括弧の色分け、EditorConfig連携を全体で利�
 
 Everforestを起動時に読み込み、Orgの見出しやブロックにもテーマの色を適用する。
 
+使い方: 起動時に自動適用される。別テーマへ変更する場合は =M-x load-theme= を使う。
+
 #+begin_src emacs-lisp
 (straight-use-package
  '(doom-everforest-theme
@@ -347,6 +428,8 @@ Everforestを起動時に読み込み、Orgの見出しやブロックにもテ�
 GUIではNerd Fontsのアイコンを補完候補とモードラインへ表示する。ターミナルではアイコンを
 無効にし、文字だけで表示が成立するようにする。
 
+使い方: GUIではNerd Fontを導入するとアイコンが表示される。ターミナルでは自動的に文字表示へ切り替わる。
+
 #+begin_src emacs-lisp
 (use-package nerd-icons)
 (use-package doom-modeline
@@ -369,6 +452,8 @@ GUIではNerd Fontsのアイコンを補完候補とモードラインへ表示�
 英数字には利用可能な等幅フォントを優先順で選び、日本語にはHackGen Console NFを使う。
 フォント設定はGUIフレームでのみ評価する。
 
+使い方: HackGen Console NFがあれば自動選択され、なければHackへフォールバックする。フォント導入後はEmacsを再起動する。
+
 #+begin_src emacs-lisp
 (when (display-graphic-p)
   (let ((font-name (if (find-font (font-spec :name "HackGen Console NF"))
@@ -388,6 +473,8 @@ GUIではNerd Fontsのアイコンを補完候補とモードラインへ表示�
 
 macOSではCommandをMeta、OptionをSuperとして扱い、他のOSと操作体系を近づける。
 
+使い方: macOSでのみ自動適用される。他のOSではキー設定に影響しない。
+
 #+begin_src emacs-lisp
 (when my/is-mac
   (setq mac-command-modifier 'meta
@@ -399,7 +486,8 @@ macOSではCommandをMeta、OptionをSuperとして扱い、他のOSと操作体
 :CUSTOM_ID: completion-and-navigation
 :END:
 
-Emacs標準の補完APIを中心に、ミニバッファとバッファ内補完のUIを構成する。
+Emacs標準の補完APIを中心に、ミニバッファとバッファ内補完のUIを構成する。補完履歴は
+prescientで保存し、Corfuの候補にはkind-iconで種別アイコンを表示する。
 
 ** ミニバッファ補完
 :PROPERTIES:
@@ -408,6 +496,12 @@ Emacs標準の補完APIを中心に、ミニバッファとバッファ内補完
 
 Verticoで候補を縦に表示し、Orderlessで空白区切りの柔軟な絞り込みを行う。Marginaliaは
 候補の種別や補足情報を付加する。
+
+使い方:
+
+- ミニバッファで候補を複数の単語から絞り込むには、単語を空白で区切って入力する。
+- =C-s= で現在バッファ内を検索し、=C-x b= でバッファを切り替える。
+- =M-y= でキルリングの履歴から貼り付ける候補を選ぶ。
 
 #+begin_src emacs-lisp
 (use-package vertico
@@ -433,6 +527,10 @@ Verticoで候補を縦に表示し、Orderlessで空白区切りの柔軟な絞�
 Consultで行、バッファ、履歴を検索し、Embarkで現在の候補に応じた操作を実行する。
 Affeは非同期のファイル検索とgrepが必要な場合に遅延ロードする。
 
+使い方: =C-s= で行検索、=C-x b= でバッファ選択、=M-y= でキルリングを検索する。候補上で
+=C-.= / =C-;= を使うとEmbarkの操作を実行でき、=M-x affe-find= / =M-x affe-grep= で非同期検索を行う。
+grep結果ではwgrepにより結果バッファを編集して元ファイルへ反映できる。
+
 #+begin_src emacs-lisp
 (use-package consult
   :bind (("C-s" . consult-line)
@@ -444,6 +542,11 @@ Affeは非同期のファイル検索とgrepが必要な場合に遅延ロード
          ("C-h B" . embark-bindings)))
 (use-package embark-consult :after (embark consult))
 (use-package affe :commands (affe-find affe-grep))
+
+;; wgrep: *grep*バッファを直接編集し、変更を各ファイルへ一括適用できるようにする。
+;; grep-modeの起動時にwgrep-setupでwgrep-modeを有効化する。
+(use-package wgrep
+  :hook (grep-setup-hook . wgrep-setup))
 #+end_src
 
 ** バッファ内補完
@@ -453,19 +556,45 @@ Affeは非同期のファイル検索とgrepが必要な場合に遅延ロード
 
 Corfuで入力中の候補を表示し、Capeからファイル名とバッファ内単語の補完ソースを追加する。
 
+使い方:
+
+- 文字を入力すると候補が自動表示され、=TAB= で補完を確定する。
+- ファイル名は =cape-file=、バッファ内の単語は =cape-dabbrev= から補完される。
+- Emacs LispのOrg Babelブロックでは =cape-elisp-block= が補完候補を提供する。
+- 補完履歴はPrescientが保存し、次回以降の候補順に反映する。
+- Corfuの候補にはkind-iconで候補種別のアイコンを表示する。
+
 #+begin_src emacs-lisp
 (use-package corfu
   :demand t
   :custom
   (corfu-auto t)
+  (corfu-auto-delay 0.2)
   (corfu-cycle t)
+  (corfu-on-exact-match nil)
   (corfu-preselect 'prompt)
-  :config (global-corfu-mode 1))
+  :config
+  (global-corfu-mode 1))
 (use-package cape
   :demand t
   :init
   (add-to-list 'completion-at-point-functions #'cape-file)
-  (add-to-list 'completion-at-point-functions #'cape-dabbrev))
+  (add-to-list 'completion-at-point-functions #'cape-dabbrev)
+  (add-to-list 'completion-at-point-functions #'cape-elisp-block)
+  (add-to-list 'completion-at-point-functions #'cape-history)
+  (add-to-list 'completion-at-point-functions #'cape-keyword))
+
+(use-package prescient
+  :demand t
+  :custom (prescient-aggressive-file-save t)
+  :config (prescient-persist-mode 1))
+
+(use-package kind-icon
+  :after corfu
+  :config
+  (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
+
+(setq tab-always-indent 'complete)
 #+end_src
 
 * 開発環境
@@ -482,6 +611,9 @@ Git、構文解析、診断、フォーマット、Language Server Protocolを�
 
 Emacs標準のproject.elを基盤に、Magit、Git関連モード、差分表示、履歴移動を追加する。
 
+使い方: =C-c SPC p p= / =C-c SPC p f= でプロジェクトを操作し、=C-c SPC g g= でMagitを開く。
+=C-c SPC g t= はGit履歴、=C-c SPC g m= は行のコミット、=C-c SPC g l= は共有用Gitリンクを表示する。
+
 #+begin_src emacs-lisp
 (use-package project :straight nil)
 (use-package magit
@@ -496,10 +628,72 @@ Emacs標準のproject.elを基盤に、Magit、Git関連モード、差分表示
   (require 'difftastic-bindings)
   (difftastic-bindings-mode 1))
 (use-package git-modes)
+(use-package magit-gitflow
+  :after magit)
+(use-package git-messenger
+  :commands git-messenger)
+(use-package git-link
+  :commands git-link)
+(declare-function diff-hl-magit-post-refresh "diff-hl-magit")
+
 (use-package diff-hl
   :hook ((prog-mode . diff-hl-mode)
-         (dired-mode . diff-hl-dired-mode)))
-(use-package git-timemachine :commands git-timemachine)
+         (dired-mode . diff-hl-dired-mode))
+  :config
+  (with-eval-after-load 'magit
+    (when (require 'diff-hl-magit nil t)
+      (add-hook 'magit-post-refresh-hook #'diff-hl-magit-post-refresh))))
+(use-package git-timemachine
+  :commands git-timemachine)
+
+(use-package tramp
+  :straight nil
+  :custom (tramp-default-method "ssh"))
+
+(use-package docker-tramp
+  :straight (:host github :repo "emacs-pe/docker-tramp.el")
+  :config (docker-tramp-add-method))
+
+(use-package consult-tramp
+  :straight (:host github :repo "Ladicle/consult-tramp")
+  :after consult
+  :commands consult-tramp)
+
+(use-package dired
+  :straight nil
+  :custom
+  (dired-dwim-target t)
+  (dired-hide-details-hide-symlink-targets nil)
+  (dired-listing-switches "-alh")
+  (dired-recursive-copies 'always)
+  (dired-use-ls-dired nil)
+  :hook (dired-mode . (lambda () (display-line-numbers-mode -1))))
+
+;; wdired: Diredバッファでファイル名やpermissionを直接編集できるようにする。
+;; Emacs標準機能のため取得は不要。diredで「r」を押すと編集モードに入る。
+(use-package wdired
+  :straight nil
+  :custom (wdired-allow-to-change-permissions 'advanced)
+  :bind (:map dired-mode-map
+              ("r" . wdired-change-to-wdired-mode)))
+
+(use-package diredfl
+  :config (diredfl-global-mode 1))
+
+(use-package nerd-icons-dired
+  :hook (dired-mode . nerd-icons-dired-mode))
+
+(use-package dired-collapse
+  :hook (dired-mode . dired-collapse-mode))
+
+(use-package dired-narrow
+  :bind (:map dired-mode-map
+              ("/" . dired-narrow)))
+
+(use-package symon
+  :demand t
+  :custom (symon-delay 2)
+  :config (symon-mode 1))
 #+end_src
 
 ** 診断と編集支援
@@ -510,10 +704,27 @@ Emacs標準のproject.elを基盤に、Magit、Git関連モード、差分表示
 Flycheckで診断し、Yasnippetでスニペットを展開する。Tree-sitter文法は必要時に確認して
 導入し、Apheleiaで対応バッファを自動フォーマットする。
 
+使い方: Flycheckの診断は保存時とモード有効化時に自動表示される。Tree-sitterの導入確認には必要な文法だけ許可し、
+スニペットは対応箇所で展開する。対応モードの保存時フォーマットはApheleiaが自動実行する。
+
 #+begin_src emacs-lisp
-(use-package flycheck :hook (prog-mode . flycheck-mode))
+(use-package flycheck
+  :demand t
+  :custom
+  (flycheck-check-syntax-automatically '(save mode-enabled))
+  (flycheck-display-errors-delay 0.3)
+  :config
+  (global-flycheck-mode 1))
+
+(use-package flycheck-pos-tip
+  :after flycheck
+  :demand t
+  :config
+  (flycheck-pos-tip-mode 1))
 (use-package yasnippet :config (yas-global-mode 1))
 (use-package yasnippet-snippets :after yasnippet)
+(declare-function global-treesit-auto-mode "treesit-auto")
+
 (use-package treesit-auto
   :custom (treesit-auto-install 'prompt)
   :config (global-treesit-auto-mode 1))
@@ -527,6 +738,9 @@ Flycheckで診断し、Yasnippetでスニペットを展開する。Tree-sitter�
 
 lsp-modeの補完候補はCorfuとOrderlessへ渡す。大規模リポジトリで負荷になりやすい
 ファイル監視は無効にし、UI、ツリー表示、デバッガーは必要時に読み込む。
+
+使い方: 対応言語のファイルを開くとLSPが遅延起動する。LSPのコマンドは =C-c l= をプレフィックスにし、
+=M-x lsp-ui-mode=、=M-x dap-debug= などを必要時に実行する。
 
 #+begin_src emacs-lisp
 (use-package lsp-mode
@@ -544,7 +758,7 @@ lsp-modeの補完候補はCorfuとOrderlessへ渡す。大規模リポジトリ�
 (use-package lsp-ui :after lsp-mode :commands lsp-ui-mode)
 (use-package lsp-treemacs :after lsp-mode)
 (use-package dap-mode :after lsp-mode :commands dap-debug)
-#+end_src
+ #+end_src
 
 ** 静的解析
 :PROPERTIES:
@@ -554,20 +768,67 @@ lsp-modeの補完候補はCorfuとOrderlessへ渡す。大規模リポジトリ�
 #+begin_src emacs-lisp
   (use-package flymake-proc)
 
-  (use-package flycheck-textlint)
+  (with-eval-after-load 'flycheck
+    (flycheck-define-checker textlint
+      "A linter for prose."
+      :command ("npx" "textlint" "--format" "unix" source-inplace)
+      :error-patterns
+      ((warning line-start (file-name) ":" line ":" column ": "
+                (id (one-or-more (not (any " "))))
+                (message (one-or-more not-newline)
+                         (zero-or-more "\n" (any " ") (one-or-more not-newline)))
+                line-end))
+      :modes (org-mode))
+    (add-to-list 'flycheck-checkers 'textlint))
 
-  (use-package flycheck-elsa)
+  (use-package flycheck-elsa
+    :after flycheck
+    :demand t
+    :config
+    (with-eval-after-load 'elisp-mode
+      (add-hook 'emacs-lisp-mode-hook #'flycheck-elsa-setup)))
 
-  (use-package flycheck-projectile)
+  (use-package flycheck-projectile
+    :after (flycheck projectile)
+    :commands flycheck-projectile-list-errors)
 
-  (use-package flycheck-cfn)
+  (use-package cfn-mode
+    :commands cfn-mode
+    :config
+    (add-to-list 'magic-mode-alist
+                 '("\\(?:---\\n\\)?AWSTemplateFormatVersion:" . cfn-mode)))
+
+  (use-package flycheck-cfn
+    :after cfn-mode
+    :commands flycheck-cfn-setup
+    :hook (cfn-mode . flycheck-cfn-setup))
 #+end_src
+
+使い方:
+
+- Flycheckは対応するメジャーモードを有効にしたときと、ファイルを保存したときに実行される。
+- Orgファイルでは =npx textlint --format unix= を使って文章をチェックする。
+- Emacs Lispでは =flycheck-elsa=、CloudFormationでは =flycheck-cfn= を使う。
+- =C-c SPC s e= でProjectileのプロジェクト全体のFlycheckエラーを一覧表示する。
+- textlint、=cfn-lint=、=cfn_nag= は別途プロジェクトまたは環境へインストールする必要がある。
 
 ** カーソル
 :PROPERTIES:
 :CUSTOM_ID: cursol
 
-操作を便利にするavy、avy-zap、expand-region、multiple-cursorsを追加する。
+操作を便利にするavy、avy-zap、expand-region、multiple-cursorsを追加する。smartparensで
+括弧や引用符を扱い、smart-jumpで定義ジャンプとジャンプバックを統合する。
+
+使い方:
+
+- =M-g c= で文字を指定して移動し、=M-g w= で単語、=M-g l= で行へ移動する。
+- =M-z= で指定した文字まで削除し、=M-Z= で現在位置から上方向へ削除する。
+- =C-= で選択範囲を拡張し、=C--= で縮小する。
+- =C->= / =C-<= で同じ語を次または前に追加選択する。
+- =C-c C-<= で同じ語をすべて追加選択し、=C-c C-RET= で複数行を同時編集する。
+- =M-.= で定義へジャンプし、=M-,= でジャンプ元へ戻る。=M-?= で参照を検索する。
+- smartparensはパッケージ導入のみで、モードと独自キーバインドは有効化していない。
+  必要なバッファで =M-x smartparens-mode= を実行するとデフォルトキーマップを使える。
 
 #+begin_src emacs-lisp
 (use-package avy
@@ -589,6 +850,15 @@ lsp-modeの補完候補はCorfuとOrderlessへ渡す。大規模リポジトリ�
          ("C-<" . mc/mark-previous-like-this)
          ("C-c C-<" . mc/mark-all-like-this)
          ("C-c C-RET" . mc/edit-lines)))
+
+(use-package smartparens)
+
+(use-package smart-jump
+  :commands (smart-jump-go smart-jump-back smart-jump-references)
+  :custom (smart-jump-bind-keys nil)
+  :bind (("M-." . smart-jump-go)
+         ("M-," . smart-jump-back)
+         ("M-?" . smart-jump-references)))
 #+end_src
 
 * プログラミング言語
@@ -604,6 +874,8 @@ lsp-modeの補完候補はCorfuとOrderlessへ渡す。大規模リポジトリ�
 :END:
 
 主要なバックエンド言語のモードを設定する。Rustは保存時にrustfmtを実行する。
+
+使い方: =.py=、=.go=、=.rs= を開くと対応モードになり、LSPが遅延起動する。Rustは保存時に自動整形される。
 
 #+begin_src emacs-lisp
 (use-package python :straight nil :hook (python-ts-mode . lsp-deferred))
@@ -622,6 +894,8 @@ lsp-modeの補完候補はCorfuとOrderlessへ渡す。大規模リポジトリ�
 TypeScript、JSX、TSX、Svelteを扱う。複数のテンプレート構文を含むファイルはweb-modeへ
 関連付ける。
 
+使い方: =.ts=、=.tsx=、=.jsx=、=.svelte= を開くと対応モードになり、LSPが遅延起動する。
+
 #+begin_src emacs-lisp
 (use-package typescript-mode :mode "\\.ts\\'" :hook (typescript-mode . lsp-deferred))
 (use-package web-mode
@@ -639,6 +913,8 @@ TypeScript、JSX、TSX、Svelteを扱う。複数のテンプレート構文を�
 
 YAML、TOML、JSON、Luaに対応するモードを拡張子へ関連付ける。
 
+使い方: 対応する拡張子のファイルを開くだけでモードとLSPが自動選択される。
+
 #+begin_src emacs-lisp
 (use-package yaml-mode :mode "\\.ya?ml\\'" :hook (yaml-mode . lsp-deferred))
 (use-package toml-mode :mode "\\.toml\\'" :hook (toml-mode . lsp-deferred))
@@ -652,6 +928,8 @@ YAML、TOML、JSON、Luaに対応するモードを拡張子へ関連付ける�
 :END:
 
 Erlang VM系、Haskell、OCaml、Kotlinの各モードでLSPを利用する。
+
+使い方: 対応する拡張子のファイルを開くと各言語モードとLSPが遅延起動する。
 
 #+begin_src emacs-lisp
 (use-package erlang :mode "\\.erl\\'" :hook (erlang-mode . lsp-deferred))
@@ -669,6 +947,8 @@ Erlang VM系、Haskell、OCaml、Kotlinの各モードでLSPを利用する。
 
 SQL、Markdown、Typstを編集する。READMEはGitHub Flavored Markdownとして開く。
 
+使い方: =.md= は通常のMarkdown、=README.md= はGFM、=.typ= はTypstとして開く。SQLと各モードではLSPを利用できる。
+
 #+begin_src emacs-lisp
 (use-package sql :straight nil :hook (sql-mode . lsp-deferred))
 (use-package markdown-mode
@@ -683,6 +963,8 @@ SQL、Markdown、Typstを編集する。READMEはGitHub Flavored Markdownとし�
 :END:
 
 ZigではLSPを起動するが、保存時の自動フォーマットは無効にして明示的な整形を優先する。
+
+使い方: =.zig= を開くとLSPが起動する。保存時に自動整形したい場合は =M-x zig-format-buffer= を明示的に実行する。
 
 #+begin_src emacs-lisp
 (use-package zig-mode
@@ -707,6 +989,8 @@ ZigではLSPを起動するが、保存時の自動フォーマットは無効�
 YAMLファイルのうち、ファイル名やパスが一般的なAnsible構成に一致する場合だけ
 ansible-modeを有効にする。
 
+使い方: playbook、=/roles/=、=/ansible/= を含むYAMLを開くとAnsible用の編集支援が有効になる。
+
 #+begin_src emacs-lisp
 (defun my/ansible-maybe-enable ()
   "Enable Ansible support for YAML files in conventional Ansible paths."
@@ -728,6 +1012,8 @@ ansible-modeを有効にする。
 
 Apache、Bazel、一般的なconfファイル、CSVをそれぞれ専用モードで開く。
 
+使い方: 対応するファイル名・拡張子を開くだけで専用モードになる。CSV/TSVは表として編集できる。
+
 #+begin_src emacs-lisp
 (use-package apache-mode
   :mode (("/\\.htaccess\\'" . apache-mode)
@@ -747,6 +1033,8 @@ Apache、Bazel、一般的なconfファイル、CSVをそれぞれ専用モー�
 
 Compose、Dockerfile、Elm、Fishのファイル名と拡張子を認識する。
 
+使い方: Composeファイル、Dockerfile、=.elm=、=.fish= を開くと専用モードになり、ElmではLSPも起動する。
+
 #+begin_src emacs-lisp
 (use-package docker-compose-mode
   :mode (("compose\\.ya?ml\\'" . docker-compose-mode)
@@ -765,6 +1053,8 @@ Compose、Dockerfile、Elm、Fishのファイル名と拡張子を認識する�
 
 HCL、INI、Justfileを専用モードへ関連付ける。
 
+使い方: =.hcl=、=.tfvars=、=.ini=、=Justfile=、=.just= を開くと専用モードになる。
+
 #+begin_src emacs-lisp
 (use-package hcl-mode :mode (("\\.hcl\\'" . hcl-mode) ("\\.tfvars\\'" . hcl-mode)))
 (use-package ini-mode :mode "\\.ini\\'")
@@ -778,6 +1068,9 @@ HCL、INI、Justfileを専用モードへ関連付ける。
 
 配置先または =apiVersion:= の内容からKubernetesマニフェストを検出する。Yasnippet、LSP、
 Helmテンプレートの強調表示を組み合わせ、クラスタ操作コマンドは必要時に読み込む。
+
+使い方: Kubernetesマニフェストを開くとk8s-mode、Yasnippet、LSPが有効になる。Helmチャート内ではテンプレート強調表示が有効になり、
+=M-x kubernetes-overview= や =M-x kubernetes-helm-template= で操作する。
 
 #+begin_src emacs-lisp
 (use-package k8s-mode
@@ -813,6 +1106,8 @@ Helmテンプレートの強調表示を組み合わせ、クラスタ操作コ�
 
 Mermaid、Makefile、Nginx、Sass/SCSSをファイル名または拡張子から判別する。
 
+使い方: 対応ファイルを開くだけで専用モードになる。Makefileの名前やNginx設定の配置も判定対象になる。
+
 #+begin_src emacs-lisp
 (use-package mermaid-mode :mode (("\\.mmd\\'" . mermaid-mode) ("\\.mermaid\\'" . mermaid-mode)))
 (use-package make-mode :straight nil :mode ("\\.mk\\'" . makefile-mode))
@@ -829,6 +1124,8 @@ Mermaid、Makefile、Nginx、Sass/SCSSをファイル名または拡張子から
 
 SSH、ログ、systemd、Terraform、tmuxの設定を専用モードで開く。TerraformではLSPも
 遅延起動する。
+
+使い方: 対応する設定ファイルを開くと専用モードになる。TerraformはLSPを遅延起動する。
 
 #+begin_src emacs-lisp
 (use-package ssh-config-mode
@@ -858,9 +1155,26 @@ Orgをタスク、メモ、アジェンダの共通形式として使い、Org-r
 :END:
 
 =~/00.orgs= をOrgデータの基準ディレクトリとする。完了時刻を記録し、インデント表示、
-装飾記号の非表示、Returnでのリンク追従を有効にする。
+装飾記号の非表示、Returnでのリンク追従を有効にする。Captureは "t"/"n" のクイック追記に加え、
+"N" 配下で =templates/= 内のテンプレートから日報・週報・会議メモ・プロジェクト・技術メモの
+新規ファイルを作成できる（日報/週報は日付・週単位で1ファイル、他はキャプチャ時刻でユニークな
+ファイル名を生成する）。週報作成時は、今週分(月〜日)の日報ファイルにある「今日やったこと」
+セクションを自動集計して「今週の成果」欄に差し込む。
+
+使い方: =C-c SPC o a= でアジェンダ、=C-c SPC o c= でキャプチャを開始する。キャプチャでは =t= がTodo、
+=n= がノート、=N= の下に日報・週報・会議・プロジェクト・技術ノート・Hugo記事のテンプレートがある。
 
 #+begin_src emacs-lisp
+(declare-function my/org-week-monday "init")
+(declare-function my/org-daily-files-this-week "init")
+(declare-function my/org-extract-heading-body "init")
+
+(defcustom my/org-hugo-base-dir
+    (expand-file-name "hugo" (or (bound-and-true-p org-directory) "~/00.orgs"))
+  "Root directory of the Hugo site used by ox-hugo."
+  :type 'directory
+  :group 'org)
+
 (use-package org
   :straight nil
   :mode ("\\.org\\'" . org-mode)
@@ -872,12 +1186,127 @@ Orgをタスク、メモ、アジェンダの共通形式として使い、Org-r
   (org-startup-indented t)
   (org-hide-emphasis-markers t)
   (org-return-follows-link t)
+  (org-clock-into-drawer t)
+  (org-clock-out-when-done t)
+  (org-clock-persist 'history)
   :config
+  (org-clock-persistence-insinuate)
+  (defun my/org-capture-daily-file ()
+    "Return today's daily report file path, creating the directory if needed."
+    (expand-file-name (format-time-string "daily/%Y-%m-%d.org") org-directory))
+  (defun my/org-capture-weekly-file ()
+    "Return this week's weekly report file path."
+    (expand-file-name (format-time-string "weekly/%G-W%V.org") org-directory))
+  (defun my/org-capture-meeting-file ()
+    "Return a new timestamped meeting note file path."
+    (expand-file-name (format-time-string "meetings/%Y-%m-%d-%H%M.org") org-directory))
+  (defun my/org-capture-project-file ()
+    "Return a new timestamped project note file path."
+    (expand-file-name (format-time-string "projects/%Y-%m-%d-%H%M.org") org-directory))
+  (defun my/org-capture-tech-note-file ()
+    "Return a new timestamped tech note file path."
+    (expand-file-name (format-time-string "notes/%Y-%m-%d-%H%M.org") org-directory))
+  (defun my/org-capture-hugo-file ()
+    "Return a new timestamped Hugo post file path."
+    (let ((directory (expand-file-name "hugo/org" org-directory)))
+      (make-directory directory t)
+      (expand-file-name (format-time-string "%Y-%m-%d-%H%M.org") directory)))
+  (defun my/org-week-monday (&optional time)
+    "Return encoded time for Monday 00:00 of the ISO week containing TIME."
+    (let* ((time (or time (current-time)))
+           (dow (nth 6 (decode-time time)))
+           (iso-dow (if (= dow 0) 7 dow))
+           (today-midnight (apply #'encode-time
+                                   (append '(0 0 0) (nthcdr 3 (decode-time time))))))
+      (time-subtract today-midnight (days-to-time (1- iso-dow)))))
+  (defun my/org-daily-files-this-week ()
+    "Return daily report file paths whose date falls in the current ISO week, sorted."
+    (let ((dir (expand-file-name "daily" org-directory)))
+      (when (file-directory-p dir)
+        (let* ((monday (time-convert (my/org-week-monday) 'integer))
+               (sunday (+ monday (* 7 86400) -1)))
+          (sort
+           (seq-filter
+            (lambda (f)
+              (let* ((name (file-name-base f))
+                     (parsed (ignore-errors
+                               (encode-time 0 0 0
+                                            (string-to-number (substring name 8 10))
+                                            (string-to-number (substring name 5 7))
+                                            (string-to-number (substring name 0 4))))))
+                (and parsed
+                     (let ((secs (time-convert parsed 'integer)))
+                       (and (>= secs monday) (<= secs sunday))))))
+            (directory-files dir t "\\`[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\.org\\'"))
+           #'string<)))))
+  (defun my/org-extract-heading-body (file heading)
+    "Return trimmed body text under the first HEADING found in FILE."
+    (when (file-exists-p file)
+      (with-temp-buffer
+        (insert-file-contents file)
+        (goto-char (point-min))
+        (when (re-search-forward (format "^\\*+[ \t]+%s[ \t]*$" (regexp-quote heading)) nil t)
+          (forward-line 1)
+          (let ((start (point))
+                (end (save-excursion
+                       (if (re-search-forward "^\\*+[ \t]" nil t)
+                           (match-beginning 0)
+                         (point-max)))))
+            (string-trim (buffer-substring-no-properties start end)))))))
+  (defun my/org-capture-weekly-aggregate ()
+    "Build an aggregated Org string from this week's daily reports."
+    (let ((files (my/org-daily-files-this-week)))
+      (if (null files)
+          "（今週のdailyファイルが見つかりませんでした）"
+        (mapconcat
+         (lambda (f)
+           (let ((body (my/org-extract-heading-body f "今日やったこと")))
+             (format "** %s\n%s"
+                     (file-name-base f)
+                     (if (and body (not (string-empty-p body))) body "  (記載なし)"))))
+         files
+         "\n\n"))))
   (setq org-capture-templates
-        '(("t" "Todo" entry (file+headline org-default-notes-file "Inbox")
+        `(("t" "Todo" entry (file+headline org-default-notes-file "Inbox")
            "* TODO %?\n  %U\n  %a")
           ("n" "Note" entry (file+headline org-default-notes-file "Notes")
-           "* %?\n  %U\n  %a"))))
+           "* %?\n  %U\n  %a")
+          ("N" "New file from template")
+          ("Nd" "Daily Report" plain (file my/org-capture-daily-file)
+           (file ,(expand-file-name "templates/daily-report.org" org-directory)))
+          ("Nw" "Weekly Report" plain (file my/org-capture-weekly-file)
+           (file ,(expand-file-name "templates/weekly-report.org" org-directory)))
+          ("Nm" "Meeting" plain (file my/org-capture-meeting-file)
+           (file ,(expand-file-name "templates/meeting.org" org-directory)))
+           ("Np" "Project" plain (file my/org-capture-project-file)
+            (file ,(expand-file-name "templates/project.org" org-directory)))
+           ("Nn" "Tech Note" plain (file my/org-capture-tech-note-file)
+            (file ,(expand-file-name "templates/tech-note.org" org-directory)))
+           ("Nh" "Hugo Post" plain (file my/org-capture-hugo-file)
+            (file ,(expand-file-name "templates/hugo-post.org" org-directory))))))
+#+end_src
+
+** ox-hugo
+:PROPERTIES:
+:CUSTOM_ID: ox-hugo
+:END:
+
+ox-hugoを使い、OrgファイルからHugo向けMarkdownを出力する。記事作成は
+=C-c SPC o c N h= から行い、記事バッファで =C-c C-e H A= を実行すると、
+ファイル全体をMarkdownへエクスポートできる。
+
+使い方: =C-c SPC o c N h= で記事を作り、記事バッファで =C-c C-e H A= を実行してMarkdownへ出力する。
+
+#+begin_src emacs-lisp
+(use-package ox-hugo
+  :after ox
+  :commands (org-hugo-export-as-md
+             org-hugo-export-to-md
+             org-hugo-export-wim-to-md
+             org-hugo-debug-info)
+  :custom
+  (org-hugo-base-dir my/org-hugo-base-dir)
+  (org-hugo-auto-set-lastmod t))
 #+end_src
 
 ** Orgの表示
@@ -885,10 +1314,14 @@ Orgをタスク、メモ、アジェンダの共通形式として使い、Org-r
 :CUSTOM_ID: org-appearance
 :END:
 
-org-modernで見出し、箇条書き、表などを視覚的に整える。
+org-modernで見出し、箇条書き、表などを視覚的に整える。Org-agendaバッファにも適用する。
+
+使い方: Orgまたはアジェンダを開くだけで表示が自動的に整形される。
 
 #+begin_src emacs-lisp
-(use-package org-modern :hook (org-mode . org-modern-mode))
+(use-package org-modern
+  :hook ((org-mode . org-modern-mode)
+         (org-agenda-finalize . org-modern-agenda)))
 #+end_src
 
 ** Org-roam
@@ -898,6 +1331,8 @@ org-modernで見出し、箇条書き、表などを視覚的に整える。
 
 =~/00.orgs/roam= にノートを置き、no-littering配下にデータベースを保存する。データベースは
 自動同期し、ノートの検索、挿入、作成を専用キーから実行できる。
+
+使い方: =C-c n f= でノート検索、=C-c n i= でリンク挿入、=C-c n c= で新規ノート作成を行う。
 
 #+begin_src emacs-lisp
 (use-package org-roam
@@ -916,6 +1351,8 @@ org-modernで見出し、箇条書き、表などを視覚的に整える。
 :END:
 
 Consultとripgrepを使い、Org-roamディレクトリ全体を高速に全文検索する。
+
+使い方: =C-c SPC o s= を実行し、検索語を入力してノート全体を検索する。
 
 #+begin_src emacs-lisp
 (defun my/org-roam-rg ()
@@ -938,6 +1375,8 @@ Consultとripgrepを使い、Org-roamディレクトリ全体を高速に全文�
 
 mbsyncで5分ごとにMaildirを同期し、送信はmsmtpへ委譲する。mu4e-alertは未読状況を
 モードラインへ表示する。
+
+使い方: =C-c SPC m m= または =M-x mu4e= でメールを開く。外部コマンド =mbsync= と =msmtp= が必要になる。
 
 #+begin_src emacs-lisp
 (add-to-list 'load-path "/usr/share/emacs/site-lisp/mu4e")
@@ -965,6 +1404,8 @@ mbsyncで5分ごとにMaildirを同期し、送信はmsmtpへ委譲する。mu4e
 Elfeedのデータベースをno-littering配下へ保存し、購読元はOrgファイル
 =~/00.orgs/feeds.org= で管理する。
 
+使い方: =C-c SPC r r= または =M-x elfeed= でフィードを開き、購読先は =feeds.org= を編集する。
+
 #+begin_src emacs-lisp
 (use-package elfeed
   :commands elfeed
@@ -987,16 +1428,40 @@ Elfeedのデータベースをno-littering配下へ保存し、購読元はOrg�
 :CUSTOM_ID: dashboard
 :END:
 
-起動後に最近使ったファイル、プロジェクト、アジェンダを中央寄せで表示する。
+起動後に最近使ったファイル、プロジェクト、アジェンダ、そして日報一覧(daily/配下、新しい順)
+を中央寄せで表示する。
+
+使い方: Dashboardの日報・最近のファイル・プロジェクト・アジェンダの項目を選ぶと各項目を開ける。
 
 #+begin_src emacs-lisp
+(defun my/dashboard-insert-daily-notes (list-size)
+  "Insert a list of the most recent daily report files."
+  (let* ((dir (expand-file-name "daily"
+                                 (if (boundp 'org-directory)
+                                     org-directory
+                                   (expand-file-name "~/00.orgs"))))
+         (files (when (file-directory-p dir)
+                  (sort (directory-files dir t "\\.org\\'") #'string>)))
+         (files (dashboard-subseq files list-size)))
+    (dashboard-insert-section
+     "Daily Reports:"
+     files
+     list-size
+     'daily
+     (dashboard-get-shortcut 'daily)
+     `(lambda (&rest _) (find-file-existing ,el))
+     (file-name-nondirectory el))))
+
 (use-package dashboard
   :demand t
   :custom
   (dashboard-startup-banner 'logo)
   (dashboard-center-content t)
-  (dashboard-items '((recents . 8) (projects . 5) (agenda . 5)))
-  :config (dashboard-setup-startup-hook))
+  (dashboard-items '((daily . 7) (recents . 8) (projects . 5) (agenda . 5)))
+  :config
+  (add-to-list 'dashboard-item-generators '(daily . my/dashboard-insert-daily-notes))
+  (add-to-list 'dashboard-item-shortcuts '(daily . "d"))
+  (dashboard-setup-startup-hook))
 #+end_src
 
 ** OS連携
@@ -1006,6 +1471,8 @@ Elfeedのデータベースをno-littering配下へ保存し、購読元はOrg�
 
 WSLでは利用可能ならwslviewを介してWindows側のブラウザーを開く。Windowsでは左Windows
 キーをSuperとしてEmacsへ渡す。
+
+使い方: WSLでは通常のURL操作が =wslview= 経由になる。Windowsでは左WindowsキーをSuperとして利用できる。
 
 #+begin_src emacs-lisp
 (when my/is-wsl
@@ -1018,12 +1485,50 @@ WSLでは利用可能ならwslviewを介してWindows側のブラウザーを開
         w32-lwindow-modifier 'super))
 #+end_src
 
+** WSLとWindowsのクリップボード共有
+:PROPERTIES:
+:CUSTOM_ID: wsl-clipboard
+:END:
+
+WSLgのWaylandクリップボードを =wl-copy= / =wl-paste= で利用する。これにより =M-w= や
+kill-ring経由のヤンクをシステムのクリップボードと双方向に同期する。コマンドが利用できない
+場合も、Emacsのkill ringへのコピーは失敗しない。
+
+使い方: =wl-copy= と =wl-paste= が存在するWSL環境では、通常の =M-w= とヤンクだけでWindows側と同期する。
+
+#+begin_src emacs-lisp
+ (defun my/wsl-copy (text &optional _push)
+   "Copy TEXT to the WSLg system clipboard without affecting the kill ring."
+   (let ((wl-copy (executable-find "wl-copy")))
+     (when (and wl-copy (stringp text))
+       (with-temp-buffer
+         (insert text)
+         (ignore-errors
+           (call-process-region (point-min) (point-max) wl-copy nil 0 nil))))))
+
+ (defun my/wsl-paste ()
+   "Return WSLg clipboard contents, or nil when unavailable."
+   (let ((wl-paste (executable-find "wl-paste")))
+     (when wl-paste
+       (with-temp-buffer
+         (let ((status (ignore-errors
+                         (call-process wl-paste nil t nil "--no-newline"))))
+           (when (and (integerp status) (zerop status))
+             (buffer-string)))))))
+
+ (when my/is-wsl
+  (setq interprogram-cut-function #'my/wsl-copy)
+  (setq interprogram-paste-function #'my/wsl-paste))
+#+end_src
+
 ** 起動時間
 :PROPERTIES:
 :CUSTOM_ID: startup-time
 :END:
 
 初期化完了時に所要時間とGC回数をエコーエリアへ表示する。
+
+使い方: 起動完了時に表示されるメッセージで、起動時間とGC回数を確認する。
 
 #+begin_src emacs-lisp
 (add-hook 'emacs-startup-hook

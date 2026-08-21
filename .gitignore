@@ -9,5 +9,8 @@
 /network-security.data
 /transient/
 /custom.el
+/history
+/places
+/recentf
 /*.elc
 /.cache/
