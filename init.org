@@ -1113,6 +1113,47 @@ SQL、Markdown、Typstを編集する。Markdownには =yibie/md-mode= を使い
   (md-render-mermaid-enabled t)
   (md-render-mermaid-command (expand-file-name "~/.bun/bin/mmdc"))
   (md-render-mermaid-browser "/usr/sbin/google-chrome"))
+(defcustom my/md-render-mermaid-scale 2
+  "Scale factor passed to Mermaid CLI and included in its media cache key."
+  :type '(number :validate
+                 (lambda (widget)
+                   (unless (> (widget-value widget) 0)
+                     (widget-put widget :error "Scale must be positive")
+                     widget)))
+  :group 'md-render)
+
+(defun my/md-render-media-command-with-mermaid-scale
+    (original backend input file)
+  "Call ORIGINAL for BACKEND, INPUT, and FILE, overriding Mermaid scale."
+  (let ((result (funcall original backend input file)))
+    (when (eq backend 'mermaid)
+      (when-let ((scale-argument
+                  (cdr (member "--scale" (car result)))))
+        (setcar scale-argument
+                (number-to-string my/md-render-mermaid-scale))))
+    result))
+
+(defun my/md-render-media-cache-file-with-mermaid-scale
+    (original backend source)
+  "Call ORIGINAL for BACKEND and SOURCE with Mermaid scale in the cache key."
+  (funcall original backend
+           (if (eq backend 'mermaid)
+               (concat source "\0my/md-render-mermaid-scale="
+                       (number-to-string my/md-render-mermaid-scale))
+             source)))
+
+(with-eval-after-load 'md-render-media
+  (unless (advice-member-p
+           #'my/md-render-media-command-with-mermaid-scale
+           'md-render--media-command)
+    (advice-add 'md-render--media-command :around
+                #'my/md-render-media-command-with-mermaid-scale))
+  (unless (advice-member-p
+           #'my/md-render-media-cache-file-with-mermaid-scale
+           'md-render--media-cache-file)
+    (advice-add 'md-render--media-cache-file :around
+                #'my/md-render-media-cache-file-with-mermaid-scale)))
+
 (with-eval-after-load 'lsp-mode
   (add-to-list 'lsp-language-id-configuration
                '(md-mode . "markdown")))
