@@ -1,0 +1,25 @@
+# -*- mode: snippet -*-
+# name: literature
+# key: literature
+# --
+* 文献情報
+
+- 出典: $1
+- 著者: $2
+- 参照日: `(format-time-string "%Y-%m-%d")`
+
+* 読む目的・背景
+
+$3
+
+* 重要ポイントと引用
+
+$4
+
+* 自分の考察・気づき
+
+$5
+
+* 今後の活用案
+
+$0

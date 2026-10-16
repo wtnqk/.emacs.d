@@ -1,0 +1,6 @@
+# -*- mode: snippet -*-
+# name: diary-mtg-template-saturday
+# key: diary-mtg-template-saturday
+# --
+`(mapconcat (lambda (offset) (let ((date (format-time-string "%Y-%m-%d %a" (time-add (current-time) (days-to-time offset))))) (format "** TODO [#A] %s 朝会\nSCHEDULED: <%s>\n:LOGBOOK:\nCLOCK: [%s 13:30]--[%s 14:00] =>  0:30\n:END:" date date date date))) (number-sequence 2 6) "\n")`
+$0

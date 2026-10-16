@@ -1,0 +1,12 @@
+# -*- mode: snippet -*-
+# name: blog-hugo
+# key: blog-hugo
+# --
+#+AUTHOR: ${1:author}
+#+DESCRIPTION: ${2:description}
+#+DATE: `(format-time-string "%Y-%m-%dT%T%z")`
+#+HUGO_CATEGORIES: ${3:diary}
+#+HUGO_TAGS: ${4:tag}
+#+HUGO_DRAFT: true
+#+STARTUP: fold
+$0

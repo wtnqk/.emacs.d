@@ -1,0 +1,11 @@
+# -*- mode: snippet -*-
+# name: blog-devto
+# key: blog-devto
+# --
+#+AUTHOR: ${1:author}
+#+DESCRIPTION: ${2:description}
+#+TAGS: ${3:tag}
+#+DEVTO_ID:
+#+DEVTO_SLUG:
+#+STARTUP: fold
+$0

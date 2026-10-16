@@ -1,0 +1,300 @@
+#+TITLE: Org-mode 記法リファレンス
+#+AUTHOR: kei-watanabe-ms
+#+DATE: 2026-08-05
+#+OPTIONS: toc:2 num:nil
+#+LANGUAGE: ja
+
+* はじめに
+
+このドキュメントは Org-mode の *基本記法（マークアップ）* を網羅的にまとめたリファレンスです。
+org-capture / org-agenda / org-roam / org-clock といった機能面の使い方は
+=org-mode-guide.org= を参照してください。こちらは「どう書くか」に特化しています。
+
+* 見出し（アウトライン）
+
+行頭の =*= の数がレベルを表します。
+
+#+BEGIN_EXAMPLE
+* レベル1見出し
+** レベル2見出し
+*** レベル3見出し
+#+END_EXAMPLE
+
+- =TAB=：現在の見出しの折りたたみ/展開をトグル
+- =S-TAB=：バッファ全体の折りたたみ/展開をトグル
+- =M-RET=：同レベルの見出しを新規作成
+- =M-<left>/<right>=：見出しレベルを上げ下げ
+- =M-<up>/<down>=：見出しを兄弟間で並べ替え
+
+* 文字装飾（インライン強調）
+
+| 記法        | 表示      |
+|-------------+-----------|
+| =*太字*=    | *太字*    |
+| =/斜体/=    | /斜体/    |
+| =_下線_=    | _下線_    |
+| =+取り消し+= | +取り消し+ |
+| ===等幅（verbatim）===  | 等幅表示（フォント固定・逐語） |
+| =~code~=    | インラインコード |
+
+#+BEGIN_EXAMPLE
+これは *太字* で、これは /斜体/ です。
+=verbatim= と ~code~ は似ていますが、~code~ はエディタ機能により解釈されることがあります。
+#+END_EXAMPLE
+
+* リスト
+
+** 番号なしリスト
+
+#+BEGIN_EXAMPLE
+- 項目1
+- 項目2
+  - ネストした項目
++ 項目3（+ でも可）
+#+END_EXAMPLE
+
+** 番号付きリスト
+
+#+BEGIN_EXAMPLE
+1. 項目1
+2. 項目2
+   1. ネストした項目
+3. 項目3
+#+END_EXAMPLE
+
+- 開始番号を指定する場合は =5. [@5]= のように書く
+
+** 定義リスト
+
+#+BEGIN_EXAMPLE
+- 用語1 :: 用語1の説明
+- 用語2 :: 用語2の説明
+#+END_EXAMPLE
+
+** チェックボックス
+
+#+BEGIN_EXAMPLE
+- [ ] 未完了タスク
+- [X] 完了タスク
+- [-] 一部完了
+#+END_EXAMPLE
+
+- =C-c C-c=：カーソル位置のチェックボックスをトグル
+- 親項目に =[/]= や =[%]= を書くと子の完了数・完了率が自動集計される
+
+#+BEGIN_EXAMPLE
+- [2/3] 買い物リスト
+  - [X] 牛乳
+  - [X] パン
+  - [ ] 卵
+#+END_EXAMPLE
+
+* リンク
+
+#+BEGIN_EXAMPLE
+[[https://example.com][表示名]]
+[[https://example.com]]
+[[file:~/00.orgs/notes.org]]
+[[file:~/00.orgs/notes.org::*見出し名]]
+[[id:xxxxxxxx-xxxx-...][org-roam ノードへのリンク]]
+#+END_EXAMPLE
+
+- =C-c C-l=：リンクを挿入
+- =C-c C-o= または設定次第で =RET=：リンクを開く（=org-return-follows-link=）
+
+* TODO / 状態管理
+
+#+BEGIN_EXAMPLE
+* TODO 資料を作成する
+* DONE レビュー対応
+* NEXT 次にやること
+* WAITING 返信待ち
+#+END_EXAMPLE
+
+- =C-c C-t=：TODO 状態を切り替え
+- 状態の定義: =#+TODO: TODO(t) NEXT(n) WAITING(w@/!) | DONE(d!) CANCELLED(c@)=
+  - =(t)= はキーバインド、=@= は状態変更時にメモを要求、=!= はタイムスタンプ記録
+
+* 優先度
+
+#+BEGIN_EXAMPLE
+* TODO [#A] 最優先タスク
+* TODO [#B] 通常タスク
+* TODO [#C] 低優先タスク
+#+END_EXAMPLE
+
+- =C-c ,=：優先度を設定
+
+* タグ
+
+#+BEGIN_EXAMPLE
+* TODO 週報レビュー :@work:meeting:
+#+END_EXAMPLE
+
+- =C-c C-q=：タグを設定・編集
+- 複数タグは =:tag1:tag2:= のようにコロン区切り
+
+* 日付・時刻
+
+| 記法                         | 意味                       |
+|------------------------------+----------------------------|
+| =<2026-08-05 Wed>=            | アクティブなタイムスタンプ（agenda に表示） |
+| =[2026-08-05 Wed]=            | 非アクティブなタイムスタンプ（agenda に非表示） |
+| =SCHEDULED: <2026-08-05 Wed>= | 着手予定日 |
+| =DEADLINE: <2026-08-07 Fri>=  | 締切日 |
+| =<2026-08-05 Wed +1w>=        | 繰り返し（毎週） |
+| =<2026-08-05 Wed 09:00-10:00>= | 時刻範囲 |
+
+- =C-c .=：タイムスタンプを挿入（アクティブ）
+- =C-c !=：タイムスタンプを挿入（非アクティブ）
+- =S-<left>/<right>=：カーソル位置の日付を1日ずつ増減
+
+* ドロワー（drawer）
+
+補足情報や自動生成データを見出しの下に格納します。折りたたみ可能です。
+
+#+BEGIN_EXAMPLE
+* TODO 週報を書く
+:PROPERTIES:
+:CATEGORY: daily
+:END:
+:LOGBOOK:
+CLOCK: [2026-08-05 Wed 09:00]--[2026-08-05 Wed 10:30] =>  1:30
+:END:
+#+END_EXAMPLE
+
+* コードブロック（Babel）
+
+#+BEGIN_EXAMPLE
+#+BEGIN_SRC python
+def hello():
+    print("Hello, world!")
+#+END_SRC
+#+END_EXAMPLE
+
+- =<s TAB=：Easy Template でコードブロックの雛形を挿入（=org-tempo= 有効時）
+- =C-c C-c=：ブロック内を評価（Org Babel）
+- =C-c '=：専用の編集バッファ（言語モード付き）でブロックを編集
+
+よく使うヘッダー引数：
+
+| 引数            | 意味                          |
+|-----------------+-------------------------------|
+| =:results output= | 標準出力を結果として埋め込む   |
+| =:results value=  | 最後の式の返り値を埋め込む     |
+| =:exports code=   | エクスポート時にコードのみ出力 |
+| =:exports results=| エクスポート時に結果のみ出力   |
+| =:tangle FILE=    | 指定ファイルへコードを書き出す |
+
+* 例（EXAMPLE ブロック）
+
+整形済みテキストをそのまま表示したい場合（コード実行はしない）。
+
+#+BEGIN_EXAMPLE
+#+BEGIN_EXAMPLE
+テキストをそのまま表示
+インデントも保持される
+#+END_EXAMPLE
+#+END_EXAMPLE
+
+* 引用（QUOTE ブロック）
+
+#+BEGIN_EXAMPLE
+#+BEGIN_QUOTE
+これは引用文です。
+#+END_QUOTE
+#+END_EXAMPLE
+
+* 表（テーブル）
+
+#+BEGIN_EXAMPLE
+| 名前 | 点数 |
+|------+------|
+| A    |   90 |
+| B    |   85 |
+|------+------|
+| 合計 |  175 |
+#+TBLFM: @3$2=vsum(@2..@-1)
+#+END_EXAMPLE
+
+- =|= を入力して =TAB= すると表が自動整形される
+- =C-c C-c=：カーソル位置の =#+TBLFM= を再計算
+- 行区切り =|-= は =TAB= で自動補完
+
+* 画像・キャプション
+
+#+BEGIN_EXAMPLE
+#+CAPTION: サンプル図
+#+NAME: fig:sample
+[[file:./images/sample.png]]
+#+END_EXAMPLE
+
+- =C-c C-x C-v=：バッファ内の画像をインライン表示/非表示切り替え
+
+* 脚注
+
+#+BEGIN_EXAMPLE
+本文中に脚注を挿入する例です。[fn:1]
+
+[fn:1] ここが脚注の内容です。
+#+END_EXAMPLE
+
+- =C-c C-x f=：脚注を挿入
+
+* コメント
+
+#+BEGIN_EXAMPLE
+# この行はコメント（エクスポートされない）
+
+#+BEGIN_COMMENT
+複数行のコメントブロック
+#+END_COMMENT
+#+END_EXAMPLE
+
+* ファイル先頭のメタ情報（キーワード）
+
+#+BEGIN_EXAMPLE
+#+TITLE: 文書タイトル
+#+AUTHOR: 著者名
+#+DATE: 2026-08-05
+#+OPTIONS: toc:2 num:nil
+#+LANGUAGE: ja
+#+STARTUP: overview
+#+END_EXAMPLE
+
+- =org-mode-guide.org= 内でも同様のヘッダーを使用している
+
+* 水平線・その他の区切り
+
+#+BEGIN_EXAMPLE
+-----
+#+END_EXAMPLE
+
+5つ以上の =-= のみの行は水平線として扱われます。
+
+* エクスポート指定（ノード単位）
+
+#+BEGIN_EXAMPLE
+#+EXCLUDE_TAGS: noexport
+* この見出しはエクスポートしない :noexport:
+#+END_EXAMPLE
+
+* 主要キーバインド早見表
+
+| キー          | 動作                          |
+|---------------+-------------------------------|
+| =TAB=         | 見出し/ブロックの折りたたみ切替 |
+| =M-RET=       | 新規見出し/リスト項目を追加   |
+| =C-c C-c=     | チェックボックス切替・コード評価・表再計算など文脈依存 |
+| =C-c C-t=     | TODO 状態を切替               |
+| =C-c C-q=     | タグを編集                    |
+| =C-c C-l=     | リンクを挿入                  |
+| =C-c .=       | タイムスタンプを挿入          |
+| =C-c ,=       | 優先度を設定                  |
+| =C-c C-e=     | エクスポートメニューを開く    |
+| =C-c '=       | コードブロックを専用バッファで編集 |
+| =<s TAB=      | コードブロックの雛形を挿入（Easy Template） |
+
+* 関連ドキュメント
+
+- =org-mode-guide.org= : org-capture / org-agenda / org-roam / org-clock などの運用フロー解説

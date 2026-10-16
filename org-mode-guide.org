@@ -1,0 +1,493 @@
+#+TITLE: Org-mode 入門ガイド（この Emacs の設定版）
+#+AUTHOR: kei-watanabe-ms
+#+DATE: 2026-08-05
+#+OPTIONS: toc:2 num:nil
+#+LANGUAGE: ja
+
+* はじめに
+
+Org-mode は Emacs のアウトライン編集機能を拡張したもので、メモ、タスク管理、日報・週報、文書作成、プログラムの実行まで1つのファイル形式で扱えます。
+
+このガイドでは、*この Emacs の実際の設定*（~/.emacs.d/init.el）をもとに、日報・週報で使う Org-mode の機能を解説します。主な対象は以下の通りです。
+
+- org-capture
+- org-agenda
+- org-roam
+- org-clock
+- org-refile・org-archive・タグ・SCHEDULED/DEADLINE・TODO state workflow・org-tables・org-export
+
+特にキーバインドや org ディレクトリ、テンプレートなどは実際の設定に従っています。
+
+* 各機能の概要
+
+** org-capture：思いついたことをすぐに記録する
+
+org-capture は、今取り組んでいる作業を中断せずに、決めた場所に素早くメモを取るための機能です。
+
+*この Emacs の設定では、リーダーキー =C-c SPC= から呼び出します。*
+
+#+BEGIN_EXAMPLE
+C-c SPC o c   ;; org-capture を起動
+#+END_EXAMPLE
+
+特徴は以下の通りです。
+
+- どのファイルのどの見出しに書き込むかをテンプレートごとに決められる
+- メモだけでなく TODO タスク、会議メモ、日記など様々な種類を定義できる
+- 元のバッファに戻るので作業の文脈を失わない
+
+*現在の init.el で定義されている capture テンプレート*は次の通りです。
+
+| テンプレート | 用途 |
+|------------|------|
+| t: Todo    | やることを inbox.org の Inbox へ放り込む |
+| n: Note    | 参考情報を inbox.org の Notes へ蓄積する |
+
+必要に応じて、Meeting 用や Journal 用のテンプレートを追加できます。
+
+** org-agenda：タスクや予定を全体で見る
+
+org-agenda は、散らばった org ファイル中の TODO や予定を一箇所に集めて表示する機能です。
+
+*この Emacs の設定では、リーダーキー =C-c SPC= から呼び出します。*
+
+#+BEGIN_EXAMPLE
+C-c SPC o a   ;; org-agenda を起動
+#+END_EXAMPLE
+
+主なビューは次の通りです。
+
+| ビュー | 内容 |
+|--------|------|
+| a: Agenda | 指定した期間の予定・締切・スケジュールを時系列で表示 |
+| t: TODO list | 指定したキーワードの TODO を一覧表示 |
+| m: Match tags | タグで絞り込んだ TODO を表示 |
+| v: Timeline | あるファイル内の全エントリを時系列で表示 |
+
+日報・週報で重要なのは「今日やること」「今週やったこと」「締切が近い TODO」を瞬時に取り出せる点です。
+
+** org-roam：知識をネットワーク化する
+
+org-roam は Org-mode 上で Zettelkasten（卡片式）の知識管理を行うための拡張パッケージです。
+
+*この Emacs の設定では、ノード検索はリーダーキー、ノード作成・リンク挿入は =C-c n= プレフィックスから呼び出します。*
+
+#+BEGIN_EXAMPLE
+C-c SPC o r   ;; org-roam-node-find：ノードを検索・作成
+C-c SPC o s   ;; my/org-roam-rg：roam ノートを ripgrep で検索
+C-c n f       ;; org-roam-node-find
+C-c n i       ;; 現在のカーソル位置にノードリンクを挿入
+C-c n c       ;; org-roam-capture：ノードを capture 形式で作成
+#+END_EXAMPLE
+
+通常の org ファイルが「ツリー構造」であるのに対し、org-roam は「ノードとリンクのグラフ構造」を作ります。これにより以下が可能になります。
+
+- 日報に書いた学びを「概念ノード」として蓄積する
+- プロジェクトごとの知見をタグやリンクで結びつける
+- 過去の自分のノートが自動的に「ここにリンクしている」形で参照される
+
+日報・週報では「今日気づいたこと」を一旦日報に書き、後から概念ノードへ昇華させる用途に向いています。
+
+** org-clock：作業時間を測定する
+
+org-clock は、タスクに対して開始・終了のタイムスタンプを記録し、実働時間を自動計算する機能です。
+
+*この Emacs では org-clock のキーは追加設定していないため、デフォルトのキー束縛を使います。*
+
+#+BEGIN_EXAMPLE
+C-c C-x C-i   ;; そのタスクを clock in（計測開始）
+C-c C-x C-o   ;; clock out（計測終了）
+C-c C-x C-r   ;; clocktable（作業時間集計表）を挿入
+#+END_EXAMPLE
+
+記録は以下のように :LOGBOOK:  drawer に蓄積されます。
+
+#+BEGIN_EXAMPLE
+* TODO 週報を書く
+:LOGBOOK:
+CLOCK: [2026-08-05 Wed 09:00]--[2026-08-05 Wed 10:30] =>  1:30
+CLOCK: [2026-08-05 Wed 13:00]--[2026-08-05 Wed 14:00] =>  1:00
+:END:
+#+END_EXAMPLE
+
+日報・週報では、タスクごとにどれだけ時間を使ったかを可視化できるのが最大のメリットです。
+
+*メモ：この Emacs ではまだ org-clock の永続化設定（org-clock-persist）や、休憩中の計測制御は行っていません。必要なら init.el に追加してください。*
+
+** org-refile：書いたものを適切な場所へ移動する
+
+org-refile は、エントリを他のファイルや見出しへ移動させる機能です。capture で受け皿に入れたメモを整理する際に使います。
+
+*この Emacs では org-refile-targets は未設定なので、デフォルトでは同一ファイル内の見出しが対象になります。*
+
+#+BEGIN_EXAMPLE
+C-c C-w     ;; 現在のエントリを refile する
+C-u C-c C-w ;; refile 先へジャンプする
+#+END_EXAMPLE
+
+例えば以下のような流れです。
+
+1. 会議中に capture で「レビュー依頼」を inbox.org にメモする
+2. 終業前に inbox を見返し、該当エントリを担当プロジェクトのファイルへ refile する
+3. 完了したタスクは週次レビューで archive 用ファイルへ移動する
+
+*よく使う refile 設定例：*
+
+#+BEGIN_SRC elisp
+(setq org-refile-targets
+      '((nil :maxlevel . 3)
+        (org-agenda-files :maxlevel . 2)))
+(setq org-refile-use-outline-path 'file)
+#+END_SRC
+
+** org-archive：完了したタスクをすっきりさせる
+
+org-archive は、タスクを作業中のファイルからアーカイブファイルへ移動させる機能です。完了した TODO が増えてファイルが読みにくくなるのを防ぎます。
+
+#+BEGIN_EXAMPLE
+C-c C-x C-a ;; サブツリーをアーカイブする
+C-c C-x C-s ;; 完了済みの兄弟エントリをアーカイブする
+#+END_EXAMPLE
+
+日報・週報では、週次レビューのタイミングで完了したタスクをまとめて archive することで、次週のファイルがすっきりします。
+
+*この Emacs では org-archive-location は未設定なので、デフォルトでは同ファイルの末尾 "Archive" 見出しへ移動します。*
+
+** タグ：文脈や種類で絞り込む
+
+タグはエントリに":@work:"や":meeting:"のような属性を付与する機能です。org-agenda やタグ検索で、特定の文脈に絞り込めます。
+
+#+BEGIN_EXAMPLE
+* TODO 週報レビュー :@work:meeting:
+* TODO 買い物 :@home:
+#+END_EXAMPLE
+
+*この Emacs では org-tag-alist は未設定なので、自由にタグを入力するか、必要に応じて定義します。*
+
+よく使うタグ例は次の通りです。
+
+| タグ | 用途 |
+|------|------|
+| @work | 業務関連 |
+| @home | プライベート |
+| meeting | 会議・打ち合わせ |
+| urgent | 緊急対応 |
+| review | レビュー対応 |
+
+週報作成時には、":meeting:"タグで絞り込めば会議時間をすぐ集計できます。
+
+*タグを補完する設定例：*
+
+#+BEGIN_SRC elisp
+(setq org-tag-alist
+      '(("@work" . ?w) ("@home" . ?h)
+        ("meeting" . ?m) ("urgent" . ?u) ("review" . ?r)))
+#+END_SRC
+
+** SCHEDULED / DEADLINE：予定と締切を管理する
+
+Org-mode では、タスクに日付を付ける方法として次の2つがあります。
+
+| 記法 | 意味 | 使い方 |
+|------|------|--------|
+| SCHEDULED: <2026-08-05 Wed> | この日に着手・実行予定 | 今日やるべき作業に付ける |
+| DEADLINE: <2026-08-05 Wed> | この日までに完了すべき | 納期・期限のある作業に付ける |
+
+例：
+
+#+BEGIN_EXAMPLE
+* TODO 週報を提出
+  SCHEDULED: <2026-08-07 Fri>
+  DEADLINE: <2026-08-07 Fri 17:00>
+#+END_EXAMPLE
+
+SCHEDULED と DEADLINE は org-agenda で自動的に予定表に表示され、日報・週報の計画作成に欠かせません。
+
+*メモ：この Emacs では org-todo-keywords は未設定なので、デフォルトの TODO / DONE のみが使えます。*
+
+** TODO state workflow：タスクの状態を段階的に管理する
+
+TODO キーワードを拡張することで、タスクの進行状態を細かく記録できます。例えば次のようなフローが一般的です。
+
+#+BEGIN_EXAMPLE
+#+TODO: TODO(t) NEXT(n) WAITING(w@/!) | DONE(d!) CANCELLED(c@)
+#+END_EXAMPLE
+
+| 状態 | 意味 |
+|------|------|
+| TODO | 未着手のタスク |
+| NEXT | 次に取り組むべきタスク |
+| WAITING | 誰かの返答待ちなどで停滞中 |
+| DONE | 完了 |
+| CANCELLED | 中止 |
+
+'@' は状態変更時にメモを求め、'!' はタイムスタンプを自動記録します。日報では NEXT タスクを朝に確認し、終業時に DONE/WAITING を更新する運用が便利です。
+
+*ちなみに、この Emacs では org-log-done を 'time に設定しているため、DONE に変更したときに自動でタイムスタンプが記録されます。*
+
+** org-tables：表で数値を管理する
+
+Org-mode の表は、単なる整形だけでなく簡易的な計算もできます。日報・週報で「タスクごとの時間」を一覧したり、「週間工数」を集計するのに役立ちます。
+
+例：タスク別時間集計
+
+#+BEGIN_EXAMPLE
+| タスク | 月 | 火 | 水 | 木 | 金 | 合計 |
+|--------+----+----+----+----+----+------|
+| 会議 | 1.0 | 1.5 | 1.0 | 0.5 | 1.0 | 5.0 |
+| 開発 | 4.0 | 3.0 | 4.0 | 5.0 | 3.0 | 19.0 |
+| ドキュメント | 2.0 | 2.0 | 1.0 | 1.0 | 2.0 | 8.0 |
+|--------+----+----+----+----+----+------|
+| 合計 | 7.0 | 6.5 | 6.0 | 6.5 | 6.0 | 32.0 |
+#+TBLFM: $7=vsum($2..$6)::@>=vsum(@2..@-1)
+#+END_EXAMPLE
+
+#+TBLFM 行を書いて C-c C-c で再計算できます。org-clock-table と組み合わせると自動集計も可能です。
+
+*メモ：この Emacs では org-table 向けの追加設定はしていませんが、標準機能で十分に使えます。*
+
+** org-export：文書を他形式に出力する
+
+org-export は、作成した org ファイルを HTML、PDF、Markdown、ODT などに変換する機能です。日報・週報を上司やチームメンバーに共有する際に便利です。
+
+#+BEGIN_EXAMPLE
+C-c C-e h h ;; HTML へエクスポート
+C-c C-e l p ;; PDF へエクスポート
+C-c C-e m m ;; Markdown へエクスポート
+#+END_EXAMPLE
+
+週報を会社のWikiやSlack、メールに貼り付ける場合は Markdown 出力、正式な報告書として残す場合は PDF 出力が向いています。
+
+*メモ：この Emacs では markdown エクスポート用の ox-gfm などはインストールしていません。GitHub Flavored Markdown が必要な場合は別途導入してください。*
+
+* 日報・週報での使い分け
+
+4つの機能は独立して使うのではなく、以下のような流れで組み合わせます。
+
+** 1日の流れ（日報ベース）
+
+| 時間帯 | 使う機能 | やること |
+|--------|---------|---------|
+| 朝 | org-agenda（=C-c SPC o a=） | 今日の予定・締切を確認 |
+| 作業中 | org-clock（=C-c C-x C-i= / =C-c C-x C-o=） | 各タスクの作業時間を計測 |
+| 気づき・依頼があったら | org-capture（=C-c SPC o c=） | すぐに受け皿にメモ |
+| 昼休み前・終業前 | org-capture / org-agenda | 日報エントリを作成、TODO を振り返る |
+| 終業後 | org-agenda + org-clock | 今日の実績時間を確認して日報を確定 |
+
+** 日報ファイルの構成例
+
+#+BEGIN_EXAMPLE
+* 2026-08-05（水）
+  :PROPERTIES:
+  :CATEGORY: daily
+  :END:
+
+** 今日の予定
+- [X] 10:00 朝会
+- [ ] 週報ドラフト作成
+- [X] レビュー対応
+
+** 実績
+- 朝会への参加（30分）
+- 週報雛形の検討（1時間）
+- レビュー指摘の修正（2時間）
+
+** 気づき・課題
+- 週報の定型化には org-clock の集計が有効
+- レビュー指摘のうち2件は来週対応に回す
+
+** 次営業日の予定
+- 週報を完成させて共有
+- 午前中会議
+#+END_EXAMPLE
+
+** 2. 一週間の流れ（週報ベース）
+
+| タイミング | 使う機能 | やること |
+|-----------|---------|---------|
+| 月曜朝 | org-agenda（=C-c SPC o a=） | 今週のスケジュールと目標を確認 |
+| 平日 | org-clock + org-capture | 実績時間を計測し、小さな気づきを記録 |
+| 金曜夕方 | org-agenda / org-clock report | 今週の TODO 完了状況と時間集計を確認 |
+| 週報作成時 | org-clock-report | タスク別・日別の集計表を生成 |
+| 週報作成後 | org-roam（=C-c SPC o r= / =C-c n i=） | 週報から得た洞察を概念ノードに整理 |
+
+** 週報ファイルの構成例
+
+#+BEGIN_EXAMPLE
+* 2026-W32 週報（8/3〜8/7）
+  :PROPERTIES:
+  :CATEGORY: weekly
+  :END:
+
+** 今週の目標
+- 新機能仕様を固める
+- 週報運用を開始する
+
+** 主要な実績
+- 新機能仕様検討会の実施
+- 週報テンプレートの作成
+- レビュー対応（5件）
+
+** 時間集計
+#+BEGIN: clocktable :scope file :maxlevel 2 :block thisweek
+#+END:
+
+** 反省・来週に活かすこと
+- 会議が多く、集中作業時間が少なかった
+- 来週は午前中に深い作業を入れる
+
+** 来週の目標
+- 新機能設計書を完成させる
+- 週報運用を継続する
+#+END_EXAMPLE
+
+** 3. 機能の役割分担まとめ
+
+| 機能 | 日報での役割 | 週報での役割 |
+|------|------------|------------|
+| org-capture | 日々の小さなメモ・気づきを素早く受け皿にためる | 週を通じた気づきを一時的にためる |
+| org-agenda | 今日の予定・締切・TODO を確認する | 今週のスケジュール全体を俯瞰する |
+| org-clock | タスクごとの実働時間を記録する | 週単位の時間配分を集計する |
+| org-refile | 受け皿のメモを適切なプロジェクト・日報へ移動する | 週の完了タスクを整理し、週報構成に再配置する |
+| org-archive | 完了した小タスクをアーカイブし、日報をすっきりさせる | 週次レビューで完了タスクを一括アーカイブする |
+| タグ | 文脈（@work / meeting など）で絞り込み、優先度を視覚化する | 会議・レビュー・緊急対応などカテゴリ別に実績を集計する |
+| SCHEDULED/DEADLINE | 今日やるべきこと・今日までの締切を計画する | 週全体の予定と期限を把握し、リスクを確認する |
+| TODO state workflow | タスクの進捗を TODO/NEXT/WAITING/DONE で更新する | 週のタスク完了率・停滞タスクを分析する |
+| org-tables | 時間・進捗を手軽に記録し、日次集計表を作る | 週間工数やカテゴリ別実績を集計する |
+| org-roam | 日報で出た学びを概念ノードに蓄積する | 週の洞察を知識ネットワークに昇華させる |
+| org-export | 日報を Markdown などに変換して共有する | 週報を PDF/Markdown で提出・共有する |
+
+* この Emacs ではどうなっているか
+
+実際の init.el / init.org の設定を抜粋します。
+
+** Org 基本設定
+
+#+BEGIN_SRC elisp
+(use-package org
+  :straight nil
+  :mode ("\\.org\\'" . org-mode)
+  :custom
+  (org-directory (expand-file-name "~/00.orgs"))
+  (org-agenda-files (list org-directory))
+  (org-default-notes-file (expand-file-name "inbox.org" org-directory))
+  (org-log-done 'time)
+  (org-startup-indented t)
+  (org-hide-emphasis-markers t)
+  (org-return-follows-link t)
+  :config
+  (setq org-capture-templates
+        '(("t" "Todo" entry (file+headline org-default-notes-file "Inbox")
+           "* TODO %?\n  %U\n  %a")
+          ("n" "Note" entry (file+headline org-default-notes-file "Notes")
+           "* %?\n  %U\n  %a"))))
+#+END_SRC
+
+** リーダーキー绑定
+
+#+BEGIN_SRC elisp
+(general-create-definer my/leader
+  :states '(normal insert visual emacs)
+  :prefix "C-c SPC")
+
+(my/leader
+  "o a" '(org-agenda :which-key "agenda")
+  "o c" '(org-capture :which-key "capture")
+  "o r" '(org-roam-node-find :which-key "roam node")
+  "o s" '(my/org-roam-rg :which-key "search notes"))
+#+END_SRC
+
+** org-roam 設定
+
+#+BEGIN_SRC elisp
+(use-package org-roam
+  :custom
+  (org-roam-directory (file-truename (expand-file-name "roam" org-directory)))
+  (org-roam-db-location (expand-file-name "org-roam.db" no-littering-var-directory))
+  :bind (("C-c n f" . org-roam-node-find)
+         ("C-c n i" . org-roam-node-insert)
+         ("C-c n c" . org-roam-capture))
+  :config (org-roam-db-autosync-mode 1))
+
+(defun my/org-roam-rg ()
+  "Search all Org-roam notes using ripgrep and Consult."
+  (interactive)
+  (consult-ripgrep org-roam-directory))
+#+END_SRC
+
+** ファイル構成の例
+
+この Emacs の org-directory は =~/00.orgs= です。日報・週報を運用するなら、以下のような構成がおすすめです。
+
+#+BEGIN_EXAMPLE
+~/00.orgs/
+├── inbox.org        ;; org-capture の受け皿
+├── daily/           ;; 日報
+│   ├── 2026-08-05.org
+│   └── ...
+├── weekly/          ;; 週報
+│   ├── 2026-W32.org
+│   └── ...
+├── notes.org        ;; 一般的なノート
+└── roam/            ;; org-roam の知識ベース
+    ├── 20260805093012-weekly_report.org
+    ├── 20260805104500-org_clock.org
+    └── ...
+#+END_EXAMPLE
+
+* 日報・週報を始めるために追加したい設定
+
+この Emacs では org-clock・org-refile・org-archive・タグ・TODO state などは未設定です。日報・週報を本格運用するなら、init.el に次のような設定を追加していくと良いでしょう。
+
+#+BEGIN_SRC elisp
+;; TODO state workflow
+(setq org-todo-keywords
+      '((sequence "TODO(t)" "NEXT(n)" "WAITING(w@/!)" "|" "DONE(d!)" "CANCELLED(c@)")))
+
+;; refile
+(setq org-refile-targets
+      '((nil :maxlevel . 3)
+        (org-agenda-files :maxlevel . 2)))
+(setq org-refile-use-outline-path 'file)
+(setq org-outline-path-complete-in-steps nil)
+
+;; archive
+(setq org-archive-location
+      (expand-file-name "archive.org::datetree/" org-directory))
+
+;; tags
+(setq org-tag-alist
+      '(("@work" . ?w) ("@home" . ?h)
+        ("meeting" . ?m) ("urgent" . ?u) ("review" . ?r)))
+
+;; clock
+(setq org-clock-persist t)
+(setq org-clock-in-resume t)
+(setq org-clock-out-remove-zero-time-clocks t)
+#+END_SRC
+
+* よくある失敗とその対策
+
+| 失敗パターン | 原因 | 対策 |
+|------------|------|------|
+| capture したまま整理しない | org-capture 後に refile しない | 毎日1回、inbox を処理する時間を設ける |
+| agenda が使い物にならない | org-agenda-files の設定漏れ |=~/00.orgs= 配下を org-agenda-files に含めているので、ファイルをその下に置く |
+| SCHEDULED と DEADLINE を混同する | 両者の意味を区別していない | SCHEDULED は着手日、DEADLINE は期限として使い分ける |
+| タグの付け方がバラバラ | タグの定義を決めていない | org-tag-alist で候補を絞り、運用ルールを作る |
+| clock をつけ忘れる | 手動で計測開始するのを忘れる | 習慣化するか、org-clock-in-switch-to-state と連携させる |
+| roam ファイルが増えすぎる | 何でもノード化する | 「再訪問される可能性のある知見」だけノード化する |
+| 1 ファイルにすべて詰め込む | 階層が深くなりすぎる | =~/00.orgs/daily/= などファイルで分ける |
+| 週報が手作業で集計になる | org-clock-table や org-tables を使わない | clocktable や TBLFM で自動集計する習慣をつける |
+
+* 次のステップ
+
+1. まずは =C-c SPC o c= と =C-c SPC o a= だけ動かす
+2. =~/00.orgs/daily/= に日報ファイルを1つ作り、3日間試す
+3. SCHEDULED / DEADLINE を使って予定・締切を管理する
+4. タグと TODO state workflow を init.el に追加し、タスクの絞り込みと進捗管理を行う
+5. org-clock を1〜2タスクに導入し、週報で clocktable を出力する
+6. org-refile / org-archive を週次レビューに組み込む
+7. 週報に書いた洞察から org-roam ノードを1つ作ってリンクを張る
+8. 必要に応じて org-export で週報を Markdown や PDF に変換する
+
+この順序で始めると、一気に導入する負荷を避けながら実用的な運用に移行できます。

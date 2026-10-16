@@ -1,3 +1,8 @@
+(use-package mozc
+  :ensure nil
+  :demand t
+  :custom (default-input-method "japanese-mozc"))
+
 ;;; init.el --- Generated from init.org -*- lexical-binding: t; -*-
 
 (defvar bootstrap-version)
@@ -211,7 +216,39 @@
 (use-package embark
   :bind (("C-." . embark-act)
          ("C-;" . embark-dwim)
-         ("C-h B" . embark-bindings)))
+         ("C-h B" . embark-bindings))
+  :config
+  ;; 候補をウィンドウを選んで開く / 分割して開くアクション（takeokunn流）
+  (defmacro my/embark-ace-action (fn)
+    `(defun ,(intern (concat "my/embark-ace-" (symbol-name fn))) ()
+       (interactive)
+       (with-demoted-errors "%s"
+         (aw-switch-to-window (aw-select nil))
+         (call-interactively (symbol-function ',fn)))))
+
+  (defmacro my/embark-split-action (fn split-type)
+    `(defun ,(intern (concat "my/embark-"
+                             (symbol-name fn)
+                             "-"
+                             (car (last (split-string
+                                         (symbol-name split-type) "-"))))) ()
+       (interactive)
+       (funcall #',split-type)
+       (call-interactively #',fn)))
+
+  ;; ace-window: 候補を任意ウィンドウへ
+  (define-key embark-file-map     (kbd "o") (my/embark-ace-action find-file))
+  (define-key embark-buffer-map   (kbd "o") (my/embark-ace-action switch-to-buffer))
+  (define-key embark-bookmark-map (kbd "o") (my/embark-ace-action bookmark-jump))
+
+  ;; split window (2: 下に分割、3: 右に分割)
+  (define-key embark-file-map     (kbd "2") (my/embark-split-action find-file split-window-below))
+  (define-key embark-buffer-map   (kbd "2") (my/embark-split-action switch-to-buffer split-window-below))
+  (define-key embark-bookmark-map (kbd "2") (my/embark-split-action bookmark-jump split-window-below))
+
+  (define-key embark-file-map     (kbd "3") (my/embark-split-action find-file split-window-right))
+  (define-key embark-buffer-map   (kbd "3") (my/embark-split-action switch-to-buffer split-window-right))
+  (define-key embark-bookmark-map (kbd "3") (my/embark-split-action bookmark-jump split-window-right)))
 (use-package embark-consult :after (embark consult))
 (use-package affe :commands (affe-find affe-grep))
 
@@ -256,7 +293,8 @@
   :commands magit-status
   :custom
   (magit-diff-refine-hunk 'all)
-  (magit-diff-paint-whitespace 'untrailing))
+  (magit-diff-paint-whitespace 'untrailing)
+  (magit-display-buffer-function #'magit-display-buffer-fullcolumn-most-v1))
 (use-package difftastic
   :demand t
   :custom (difftastic-executable (or (executable-find "difft") "difft"))
@@ -331,6 +369,72 @@
   :custom (symon-delay 2)
   :config (symon-mode 1))
 
+;; winner-mode: ウィンドウ分割・サイズ変更の履歴を undo/redo する（Emacs標準）。
+(use-package winner
+  :straight nil
+  :demand t
+  :config
+  (winner-mode 1)
+  (global-set-key (kbd "C-c <left>")  #'winner-undo)
+  (global-set-key (kbd "C-c <right>") #'winner-redo))
+
+;; ace-window: 番号/キーで任意のウィンドウへ高速移動。標準の C-x o（次ウィンドウ）を置き換える。
+(use-package ace-window
+  :bind (("C-x o" . ace-window))
+  :custom
+  (aw-dispatch-always t)
+  (aw-scope 'frame)
+  (aw-keys '(?a ?s ?d ?f ?g ?h ?j ?k ?l))
+  (aw-minibuffer-flag t))
+
+;; zoom-window: 現在のウィンドウを一時的に最大化する。
+(use-package zoom-window
+  :commands zoom-window-zoom
+  :bind (("C-c C-z" . zoom-window-zoom)))
+
+;; tab-bar: プロジェクト単位でタブ（ワークスペース）を管理し、タブをプロジェクト名で自動リネームする。
+(use-package tab-bar
+  :straight nil
+  :demand t
+  :bind-keymap (("C-x C-t" . tab-prefix-map))
+  :custom
+  (tab-bar-close-button-show nil)
+  (tab-bar-close-last-tab-choice nil)
+  (tab-bar-close-tab-select 'left)
+  (tab-bar-new-tab-choice "*scratch*")
+  (tab-bar-new-button-show nil)
+  (tab-bar-tab-name-truncated-max 12)
+  (tab-bar-separator " | ")
+  :config
+  (tab-bar-mode 1)
+  (defun my/tab-bar-rename-tab (&rest _)
+    (interactive)
+    (let ((proj-name (if-let ((proj (project-current)))
+                         (project-name proj)
+                       "-")))
+      (tab-bar-rename-tab proj-name)))
+  (add-hook 'window-selection-change-functions #'my/tab-bar-rename-tab)
+  (define-key tab-prefix-map (kbd "r") #'my/tab-bar-rename-tab))
+
+;; treemacs: 右側のファイルツリー。プロジェクト追従・Git表示・状態永続化に対応。
+(use-package treemacs
+  :defer t
+  :bind (("C-q" . treemacs))
+  :config
+  (treemacs-project-follow-mode 1)
+  (treemacs-filewatch-mode 1)
+  (treemacs-follow-mode 1)
+  (treemacs-git-mode 'deferred)
+  (setopt treemacs-width 50)
+  (setopt treemacs-position 'right)
+  (setopt treemacs-is-never-other-window t))
+
+;; treemacs-tab-bar: tab-bar の各タブごとに独立した treemacs ワークスペースを持つ連携。
+;; TABごとに treemacs バッファが異なるため、プロジェクト単位のワークスペースがタブと同期する。
+(use-package treemacs-tab-bar
+  :after (treemacs)
+  :config (treemacs-set-scope-type 'Tabs))
+
 (use-package flycheck
   :demand t
   :custom
@@ -344,8 +448,16 @@
   :demand t
   :config
   (flycheck-pos-tip-mode 1))
-(use-package yasnippet :config (yas-global-mode 1))
+(use-package yasnippet
+  :demand t
+  :custom (yas-snippet-dirs
+           (list (expand-file-name "snippets" user-emacs-directory)))
+  :config (yas-global-mode 1))
 (use-package yasnippet-snippets :after yasnippet)
+(use-package consult-yasnippet
+  :demand t
+  :bind (("C-c y" . consult-yasnippet)
+         ("C-c C-y" . consult-yasnippet)))
 (declare-function global-treesit-auto-mode "treesit-auto")
 
 (use-package treesit-auto
@@ -555,6 +667,11 @@
 (declare-function my/org-week-monday "init")
 (declare-function my/org-daily-files-this-week "init")
 (declare-function my/org-extract-heading-body "init")
+(declare-function my/org-month-string "init")
+(declare-function my/org-daily-files-in-month "init")
+(declare-function my/org-monthly-aggregate "init")
+(declare-function my/org-capture-monthly-aggregate "init")
+(declare-function my/org-archive-last-month-dailies "init")
 
 (defcustom my/org-hugo-base-dir
     (expand-file-name "hugo" (or (bound-and-true-p org-directory) "~/00.orgs"))
@@ -579,11 +696,18 @@
   :config
   (org-clock-persistence-insinuate)
   (defun my/org-capture-daily-file ()
-    "Return today's daily report file path, creating the directory if needed."
+    "Return today's daily report file path, creating the directory if needed.
+
+When the calendar month has rolled over, archive the previous month's
+daily reports first (aggregate into monthly/ and move files to archive/)."
+    (my/org-archive-last-month-dailies)
     (expand-file-name (format-time-string "daily/%Y-%m-%d.org") org-directory))
   (defun my/org-capture-weekly-file ()
     "Return this week's weekly report file path."
     (expand-file-name (format-time-string "weekly/%G-W%V.org") org-directory))
+  (defun my/org-capture-monthly-file ()
+    "Return this month's monthly report file path."
+    (expand-file-name (format-time-string "monthly/%Y-%m.org") org-directory))
   (defun my/org-capture-meeting-file ()
     "Return a new timestamped meeting note file path."
     (expand-file-name (format-time-string "meetings/%Y-%m-%d-%H%M.org") org-directory))
@@ -593,6 +717,52 @@
   (defun my/org-capture-tech-note-file ()
     "Return a new timestamped tech note file path."
     (expand-file-name (format-time-string "notes/%Y-%m-%d-%H%M.org") org-directory))
+  (defun my/org-entry-has-date-p (property date)
+    "Return non-nil when PROPERTY on the current entry matches DATE."
+    (when-let ((timestamp (org-entry-get nil property)))
+      (condition-case nil
+          (equal date
+                 (format-time-string "%Y-%m-%d"
+                                     (org-time-string-to-time timestamp)))
+        (error nil))))
+  (defun my/org-today-todos ()
+    "Return today's scheduled or deadline TODOs as linked Org headings."
+    (let ((date (format-time-string "%Y-%m-%d"))
+          entries)
+      (dolist (file (org-agenda-files))
+        (when (file-readable-p file)
+          (with-current-buffer (find-file-noselect file)
+            (org-with-wide-buffer
+             (org-map-entries
+              (lambda ()
+                (when (and (member (org-get-todo-state) org-not-done-keywords)
+                           (or (my/org-entry-has-date-p "SCHEDULED" date)
+                               (my/org-entry-has-date-p "DEADLINE" date)))
+                  (push
+                   (format "** TODO [[file:%s::%d][%s]]"
+                           (expand-file-name file)
+                           (line-number-at-pos)
+                           (org-get-heading t t t t))
+                   entries)))
+              nil 'file)))))
+      (if entries
+          (mapconcat #'identity (nreverse entries) "\n")
+        "** （今日のAgendaに未完了TODOはありません）")))
+  (defun org-dblock-write:agenda (_params)
+    "Write today's scheduled and deadline TODOs into an Org dynamic block."
+    (insert (my/org-today-todos)))
+  (defun my/org-capture-daily-template ()
+    "Return the daily template with fixed work-item headings inserted."
+    (with-temp-buffer
+      (insert-file-contents
+       (expand-file-name "templates/daily-report.org" org-directory))
+      (goto-char (point-min))
+      (when (re-search-forward "^\\* 今日やったこと[ \t]*$" nil t)
+        (forward-line 1)
+        (insert-file-contents
+         (expand-file-name "templates/work-items.org" org-directory))
+        (insert "\n"))
+      (buffer-string)))
   (defun my/org-capture-hugo-file ()
     "Return a new timestamped Hugo post file path."
     (let ((directory (expand-file-name "hugo/org" org-directory)))
@@ -653,16 +823,77 @@
                      (if (and body (not (string-empty-p body))) body "  (記載なし)"))))
          files
          "\n\n"))))
+  (defun my/org-month-string (&optional time)
+    "Return the month (YYYY-MM) containing TIME, defaulting to now."
+    (format-time-string "%Y-%m" (or time (current-time))))
+  (defun my/org-previous-month-year-month ()
+    "Return (YEAR MONTH) for the month preceding the current month."
+    (let* ((dt (decode-time (current-time)))
+           (year (nth 5 dt))
+           (month (nth 4 dt)))
+      (if (= month 1)
+          (list (1- year) 12)
+        (list year (1- month)))))
+  (defun my/org-daily-files-in-month (year month)
+    "Return sorted daily report file paths whose date falls in YEAR-MONTH."
+    (let ((dir (expand-file-name "daily" org-directory)))
+      (when (file-directory-p dir)
+        (sort (directory-files dir t
+                               (format "\\`%04d-%02d-[0-9]\\{2\\}\\.org\\'" year month))
+              #'string<))))
+  (defun my/org-monthly-aggregate (ym)
+    "Build an aggregated Org string from the daily reports of month YM (YYYY-MM)."
+    (let* ((year (string-to-number (substring ym 0 4)))
+           (month (string-to-number (substring ym 5 7)))
+           (files (my/org-daily-files-in-month year month)))
+      (if (null files)
+          "（対象月のdailyファイルが見つかりませんでした）"
+        (mapconcat
+         (lambda (f)
+           (let ((body (my/org-extract-heading-body f "今日やったこと")))
+             (format "** %s\n%s"
+                     (file-name-base f)
+                     (if (and body (not (string-empty-p body))) body "  (記載なし)"))))
+         files
+         "\n\n"))))
+  (defun my/org-capture-monthly-aggregate ()
+    "Build an aggregated Org string from the current month's daily reports."
+    (my/org-monthly-aggregate (my/org-month-string)))
+  (defun my/org-archive-last-month-dailies ()
+    "Aggregate last month's daily reports into monthly/YYYY-MM.org, then move
+the daily files to archive/daily/YYYY-MM/. Idempotent per month."
+    (interactive)
+    (let* ((pair (my/org-previous-month-year-month))
+           (year (car pair))
+           (month (cadr pair))
+           (ym (format "%04d-%02d" year month))
+           (monthly-file (expand-file-name (format "monthly/%s.org" ym) org-directory))
+           (archive-dir (expand-file-name (format "archive/daily/%s" ym) org-directory))
+           (files (my/org-daily-files-in-month year month)))
+      (when files
+        ;; 1. Create the monthly aggregate file if it does not yet exist.
+        (unless (file-exists-p monthly-file)
+          (make-directory (file-name-directory monthly-file) t)
+          (with-temp-file monthly-file
+            (insert (format "#+title: 月報: %s\n#+date: %s-01\n\n* 今月の成果\n\n%s\n"
+                            ym ym (my/org-monthly-aggregate ym)))))
+        ;; 2. Move that month's daily files into the archive folder.
+        (make-directory archive-dir t)
+        (dolist (f files)
+          (rename-file f (expand-file-name (file-name-nondirectory f) archive-dir) t))
+        (message "日報(%s)を月報へ集約し archive へ移動しました" ym))))
   (setq org-capture-templates
         `(("t" "Todo" entry (file+headline org-default-notes-file "Inbox")
            "* TODO %?\n  %U\n  %a")
-          ("n" "Note" entry (file+headline org-default-notes-file "Notes")
-           "* %?\n  %U\n  %a")
-          ("N" "New file from template")
-          ("Nd" "Daily Report" plain (file my/org-capture-daily-file)
-           (file ,(expand-file-name "templates/daily-report.org" org-directory)))
-          ("Nw" "Weekly Report" plain (file my/org-capture-weekly-file)
+           ("n" "Note" entry (file+headline org-default-notes-file "Notes")
+            "* %?\n  %U\n  %a")
+           ("N" "New file from template")
+           ("Nd" "Daily Report" plain (file my/org-capture-daily-file)
+            (function my/org-capture-daily-template))
+           ("Nw" "Weekly Report" plain (file my/org-capture-weekly-file)
            (file ,(expand-file-name "templates/weekly-report.org" org-directory)))
+           ("Ng" "Monthly Report" plain (file my/org-capture-monthly-file)
+           (file ,(expand-file-name "templates/monthly-report.org" org-directory)))
           ("Nm" "Meeting" plain (file my/org-capture-meeting-file)
            (file ,(expand-file-name "templates/meeting.org" org-directory)))
            ("Np" "Project" plain (file my/org-capture-project-file)
@@ -670,7 +901,16 @@
            ("Nn" "Tech Note" plain (file my/org-capture-tech-note-file)
             (file ,(expand-file-name "templates/tech-note.org" org-directory)))
            ("Nh" "Hugo Post" plain (file my/org-capture-hugo-file)
-            (file ,(expand-file-name "templates/hugo-post.org" org-directory))))))
+            (file ,(expand-file-name "templates/hugo-post.org" org-directory)))))
+  ;; .orgを開くたびに、月替わり分の日報を自動集約してアーカイブする。
+  (my/org-archive-last-month-dailies))
+
+(defun my/org-archive-dailies-on-startup ()
+  "Archive last month's daily reports on Emacs startup."
+  (require 'org)
+  (when (fboundp 'my/org-archive-last-month-dailies)
+    (my/org-archive-last-month-dailies)))
+(add-hook 'after-init-hook #'my/org-archive-dailies-on-startup)
 
 (use-package ox-hugo
   :after ox
@@ -681,6 +921,14 @@
   :custom
   (org-hugo-base-dir my/org-hugo-base-dir)
   (org-hugo-auto-set-lastmod t))
+
+(use-package ox-confluence-html
+  :straight (ox-confluence-html
+             :type git
+             :host github
+             :repo "Gchouchou/ox-confluence-html")
+  :after ox
+  :demand t)
 
 (use-package org-modern
   :hook ((org-mode . org-modern-mode)
@@ -710,6 +958,7 @@
   (mu4e-update-interval 300)
   (mu4e-change-filenames-when-moving t)
   (mu4e-compose-format-flowed t)
+  (mu4e-split-view 'horizontal)
   (message-send-mail-function 'message-send-mail-with-sendmail)
   (sendmail-program (or (executable-find "msmtp") "msmtp"))
   (message-sendmail-extra-arguments '("--read-envelope-from"))
@@ -718,10 +967,12 @@
 
 (use-package elfeed
   :commands elfeed
-  :custom (elfeed-db-directory (expand-file-name "elfeed" no-littering-var-directory)))
+  :custom
+  (elfeed-db-directory (expand-file-name "elfeed" no-littering-var-directory))
+  (elfeed-show-entry-switch #'display-buffer))
 (use-package elfeed-org
   :after elfeed
-  :custom (rmh-elfeed-org-files (list (expand-file-name "feeds.org" org-directory)))
+  :custom (rmh-elfeed-org-files (list (expand-file-name "feeds.org" (or (bound-and-true-p org-directory) "~/00.orgs"))))
   :config (elfeed-org))
 
 (defun my/dashboard-insert-daily-notes (list-size)
@@ -769,7 +1020,8 @@
       (with-temp-buffer
         (insert text)
         (ignore-errors
-          (call-process-region (point-min) (point-max) wl-copy nil 0 nil))))))
+         (call-process-region (point-min) (point-max) wl-copy nil 0 nil
+                              "--type" "text/plain;charset=utf-8"))))))
 
 (defun my/wsl-paste ()
   "Return WSLg clipboard contents, or nil when unavailable."

@@ -1,0 +1,10 @@
+# -*- mode: snippet -*-
+# name: task
+# key: task
+# --
+- URL: $1
+
+*** TODO 要件を確認する
+*** TODO 対応する
+*** TODO 報告する
+$0

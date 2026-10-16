@@ -1,0 +1,13 @@
+# -*- mode: snippet -*-
+# name: diary
+# key: diary
+# type: snippet
+# --
+#+BEGIN: clocktable :maxlevel 2 :scope agenda :block ${1:`(format-time-string "%Y-%m-%d")`} :fileskip0 t :tags t :link t
+#+END:
+**** Task
+- 引続き対応する
+**** MTG
+- 1:30 PM-1:45 PM 朝会
+- 1:45 PM-2:00 PM Duoを見る会
+$0
