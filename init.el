@@ -472,6 +472,7 @@
   (lsp-enable-file-watchers nil)
   (lsp-completion-provider :none)
   (lsp-headerline-breadcrumb-enable t)
+  (lsp-marksman-server-command (expand-file-name "~/.local/share/mise/installs/marksman/latest/marksman"))
   :init
   (defun my/lsp-mode-setup-completion ()
     (setf (alist-get 'styles (alist-get 'lsp-capf completion-category-defaults))
@@ -581,7 +582,10 @@
   :straight (:host github :repo "yibie/md-mode")
   :mode "\\.md\\'"
   :hook (md-mode . lsp-deferred)
-  :custom (md-render-mermaid-enabled t))
+  :custom
+  (md-render-mermaid-enabled t)
+  (md-render-mermaid-command (expand-file-name "~/.bun/bin/mmdc"))
+  (md-render-mermaid-browser "/usr/sbin/google-chrome"))
 (with-eval-after-load 'lsp-mode
   (add-to-list 'lsp-language-id-configuration
                '(md-mode . "markdown")))
