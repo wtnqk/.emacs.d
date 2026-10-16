@@ -1096,15 +1096,22 @@ Erlang VM系、Haskell、OCaml、Kotlinの各モードでLSPを利用する。
 :CUSTOM_ID: sql-and-document-formats
 :END:
 
-SQL、Markdown、Typstを編集する。READMEはGitHub Flavored Markdownとして開く。
+SQL、Markdown、Typstを編集する。Markdownには =yibie/md-mode= を使い、Org風の編集表示と同一バッファ内のRendered viewを利用する。
 
-使い方: =.md= は通常のMarkdown、=README.md= はGFM、=.typ= はTypstとして開く。SQLと各モードではLSPを利用できる。
+使い方: =.md= は =md-mode= で開く。=C-c C-v= で同じバッファをRendered viewへ切り替えられ、Mermaidのフェンスはローカルの =mmdc= とChromeで描画される。SQLと各モードではLSPを利用できる。
 
 #+begin_src emacs-lisp
 (use-package sql :straight nil :hook (sql-mode . lsp-deferred))
-(use-package markdown-mode
-  :mode (("README\\.md\\'" . gfm-mode) ("\\.md\\'" . markdown-mode))
-  :hook (markdown-mode . lsp-deferred))
+(use-package textui
+  :straight (:host github :repo "yibie/textui"))
+(use-package md-mode
+  :straight (:host github :repo "yibie/md-mode")
+  :mode "\\.md\\'"
+  :hook (md-mode . lsp-deferred)
+  :custom (md-render-mermaid-enabled t))
+(with-eval-after-load 'lsp-mode
+  (add-to-list 'lsp-language-id-configuration
+               '(md-mode . "markdown")))
 (use-package typst-ts-mode :mode "\\.typ\\'" :hook (typst-ts-mode . lsp-deferred))
 #+end_src
 

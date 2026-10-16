@@ -575,9 +575,16 @@
 (use-package kotlin-mode :mode "\\.kts?\\'" :hook (kotlin-mode . lsp-deferred))
 
 (use-package sql :straight nil :hook (sql-mode . lsp-deferred))
-(use-package markdown-mode
-  :mode (("README\\.md\\'" . gfm-mode) ("\\.md\\'" . markdown-mode))
-  :hook (markdown-mode . lsp-deferred))
+(use-package textui
+  :straight (:host github :repo "yibie/textui"))
+(use-package md-mode
+  :straight (:host github :repo "yibie/md-mode")
+  :mode "\\.md\\'"
+  :hook (md-mode . lsp-deferred)
+  :custom (md-render-mermaid-enabled t))
+(with-eval-after-load 'lsp-mode
+  (add-to-list 'lsp-language-id-configuration
+               '(md-mode . "markdown")))
 (use-package typst-ts-mode :mode "\\.typ\\'" :hook (typst-ts-mode . lsp-deferred))
 
 (use-package zig-mode
