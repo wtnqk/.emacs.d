@@ -23,6 +23,15 @@
 (setq inhibit-startup-screen t
       inhibit-startup-echo-area-message user-login-name)
 
+;; 読み込み時に出る lexical-binding クッキー欠落警告だけを抑制する。
+;; 早期起動の警告は warning-inhibit-types、初期化後の警告は
+;; warning-suppress-types が照合される。 旧Emacsには warnings.el も
+;; これらの変数も無いので無視される。
+(require 'warnings nil t)
+(when (boundp 'warning-inhibit-types)
+  (add-to-list 'warning-inhibit-types '(files missing-lexbind-cookie))
+  (add-to-list 'warning-suppress-types '(files missing-lexbind-cookie)))
+
 (when (getenv "WSL_DISTRO_NAME")
   (setenv "GTK_IM_MODULE" "ibus")
   (setenv "QT_IM_MODULE" "ibus")

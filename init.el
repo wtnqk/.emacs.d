@@ -1,3 +1,5 @@
+;;; init.el -*- lexical-binding: t; -*-
+
 (use-package mozc
   :ensure nil
   :demand t
@@ -71,6 +73,11 @@
               truncate-lines nil)
 
 (global-auto-revert-mode 1)
+;; dired/dirvish バッファも自動更新の対象にする。既定(nil)だと
+;; ファイル紐付けバッファだけが見張られ、一覧は g 押下まで古いまま。
+;; Emacs 31 ではこの名前のコマンドは存在せず、変数は setq で直接たたく。
+;; dired 系は auto-revert-interval（既定5秒）周期で追従する。
+(setq global-auto-revert-non-file-buffers t)
 (delete-selection-mode 1)
 (electric-pair-mode 1)
 (save-place-mode 1)
@@ -102,11 +109,24 @@
      "s r" '(consult-ripgrep :which-key "ripgrep")
      "s e" '(flycheck-projectile-list-errors :which-key "project errors")
      "s m" '(symon-mode :which-key "system monitor")
+     "e n" '(next-error :which-key "next error")
+     "e p" '(previous-error :which-key "prev error")
+     "e l" '(flycheck-list-errors :which-key "error list")
+     "e f" '(my/lsp-diag-list :which-key "diagnostics (lspce/flycheck)")
+     "l d" '(xref-find-definitions :which-key "definitions")
+     "l r" '(xref-find-references :which-key "references")
+     "l i" '(xref-find-implementations :which-key "implementations")
+     "l s" '(my/lspce-workspace-symbol :which-key "workspace symbol")
+     "l m" '(consult-imenu :which-key "imenu")
+     "l a" '(my/lspce-code-actions :which-key "code action")
+     "l n" '(my/lspce-rename :which-key "rename symbol")
+     "l h" '(my/lspce-inlay-hints :which-key "inlay hints")
     "g g" '(magit-status :which-key "magit")
     "g d" '(difftastic-magit-diff :which-key "difftastic diff")
     "g t" '(git-timemachine :which-key "git time machine")
     "g m" '(git-messenger :which-key "git blame")
     "g l" '(git-link :which-key "git link")
+    "t g" '(ghostel :which-key "terminal")
     "k k" '(kubernetes-overview :which-key "kubernetes")
     "o a" '(org-agenda :which-key "agenda")
     "o c" '(org-capture :which-key "capture")
@@ -125,6 +145,15 @@
   (key-chord-define-global "jf" #'view-mode))
 
 (use-package key-combo
+  :preface
+  ;; Emacs 31 で旧 cl.el が削除され、key-combo.el:479 のトップレベル
+  ;; `lexical-let' が void-function 化（require 自体が失敗する）していた。
+  ;; 用途は 2 関数が 1 つの変数を共有するだけで、展開後の中身は
+  ;; 単なるグローバル可変への読み書きなので、let への置換で意味的に等価。
+  (defmacro lexical-let (bindings &rest body)
+    "削除された旧 cl.el マクロの互換。`let' に展開する。"
+    (declare (debug let) (indent let))
+    `(let ,bindings ,@body))
   :hook ((typescript-mode . key-combo-mode)
          (web-mode . key-combo-mode)))
 
@@ -163,6 +192,21 @@
              (expand-file-name "straight/build/doom-everforest-theme"
                                user-emacs-directory))
 
+;; doom-themes-base.el の face 表は gnus-group-news-low-empty へ
+;; :inherit 'gnus-group-news-low を張るが、gnus 既定側は news-low へ
+;; :inherit news-low-empty を張るため相互継承の輪になる（upstream 側の不具合）。
+;; 両方が face-spec-map に揃うと、ポップアップ枠（corfu/posframe）作成時の
+;; face 初期化で "Face inheritance results in inheritance cycle" が
+;; signaling され、補完ウィンドウの生成が失敗し続けて *Messages* へ
+;; バックトレースが流れ続ける。def-doom-theme はテーマロード時にこの表を
+;; 展開するので、展開前に表側をパッチして :inherit を使わない
+;; 「base5 色直書き・normal 太さ」（テーマの意図と同一の見た目）へ置換し、
+;; 輪の生成そのものを無くす。下の use-package より前（＝テーマ展開前）に
+;; 評価される位置に置くこと。
+(with-eval-after-load 'doom-themes-base
+  (when-let ((entry (assq 'gnus-group-news-low-empty doom-themes-base-faces)))
+    (setcdr entry '(:foreground base5 :weight 'normal))))
+
 (use-package doom-themes
   :demand t
   :config
@@ -190,6 +234,43 @@
       (set-fontset-font t charset
                         (font-spec :family "HackGen Console NF")
                         nil 'append))))
+
+(use-package dimmer
+  :straight (dimmer :type git :host github :repo "gonewest818/dimmer.el")
+  :demand t
+  :custom
+  (dimmer-fraction 0.3)
+  ;; 前景色だけ落とす。背景を塗るモードだとdoom-modelineや
+  ;; dirvishのペイン配色と喧嘩する。
+  (dimmer-adjustment-mode :foreground)
+  (dimmer-use-colorspace :cielab)
+  :config
+  (dimmer-mode t))
+
+(use-package focus
+  :straight (focus :type git :host github :repo "larstvei/Focus")
+  :custom
+  ;; カーソル移動のたびに再計算せず、少しまとめて更新させる。
+  ;; 既定では無効。必要時は =M-x focus-mode= で buffer単位のトグル。
+  (focus-update-idle-delay 0.2))
+
+(use-package indent-guide
+  :straight (indent-guide :type git :host github :repo "zk-phi/indent-guide")
+  :demand t
+  :custom
+  (indent-guide-delay 0.1)
+  ;; ▏(U+258F)はHackGen系にグリフが無く不可視化することがあるため、
+  ;; どの等幅フォントにもあるボックス描画文字を使う。
+  (indent-guide-char "│")
+  ;; ネストした階段も描く（typescriptの深いネストで効く）。
+  (indent-guide-recursive t)
+  :config
+  ;; everforestの背景(#2b3339)に対し明確に知覚できる段差の色。
+  (set-face-foreground 'indent-guide-face "#5c6b72")
+  ;; elispは括弧の刻みが細かくガイドがノイズになる。
+  (add-to-list 'indent-guide-inhibit-modes 'emacs-lisp-mode)
+  (add-to-list 'indent-guide-inhibit-modes 'org-mode)
+  (indent-guide-global-mode 1))
 
 (when my/is-mac
   (setq mac-command-modifier 'meta
@@ -324,14 +405,21 @@
   :straight nil
   :custom (tramp-default-method "ssh"))
 
-(use-package docker-tramp
-  :straight (:host github :repo "emacs-pe/docker-tramp.el")
-  :config (docker-tramp-add-method))
+;; docker-trampは廃止。Tramp 2.7以降に tramp-container として統合され、
+;; Emacs 31同梱のTramp 2.8.2なら /usr/share/emacs/31.1/lisp/net/tramp-container.elc
+;; がそのまま使える（docker/podman/kubectl/nerdctl/docker-compose）。
+;; 接続文字列の意味が変わった点に注意:
+;;   旧: /docker:HOST/CONTAINER:   （docker-tramp式）
+;;   新: /docker:CONTAINER@HOST:   （tramp-container式。例 /docker:mybox@localhost:）
 
 (use-package consult-tramp
   :straight (:host github :repo "Ladicle/consult-tramp")
   :after consult
-  :commands consult-tramp)
+  :commands consult-tramp
+  :custom
+  ;; consult-trampのコンテナ一覧は廃止済みdocker-tramp APIに依存するため無効化。
+  ;; コンテナ内ファイルは /docker:名前@ホスト: を直接M-x find-fileする。
+  (consult-tramp-enable-docker nil))
 
 (use-package dired
   :straight nil
@@ -343,26 +431,299 @@
   (dired-use-ls-dired nil)
   :hook (dired-mode . (lambda () (display-line-numbers-mode -1))))
 
+;; dirvish: Diredの置き換え。ディレクトリバッファを「セッション」として扱い、
+;; ヘッダにgit状態・履歴・タブ・絞り込みを内蔵する。MELPA未収録のためGitHub直取得。
+;; 内蔵attrが nerd-icons-dired（アイコン）、dired-collapse（単子展開）、
+;; dired-narrow（絞り込み）を兼ねるので、それらの単体導入は廃止した。
+;; diredfl・wdired・diff-hlはdirvishと併用可能なのでそのまま。
+;; dirvish-side はそれ自体がトグルコマンド（開→再押で選択→サイド側で再押で閉）。
+;; サイドバーは treemacs と同じ右側に置く。
+;; C-x d は素の dired ではなくフルフレームの dirvish セッションへ。
+;; （override-dired-mode を入れても dired コマンド単体はレイアウトを
+;; 組み立てないので、見た目が素 dired と変わらない。dirvish コマンドは
+;; 既定で parent|一覧|preview の三ペインレイアウトを開く。C-u 付きで
+;; ディレクトリ指定。窓を占有したくないときは M-x dirvish-dwim。）
+(use-package dirvish
+  :straight (:host github :repo "alexluigit/dirvish"
+             :files (:defaults "extensions/*")
+             :depends (f ht s nerd-icons))
+  :init (dirvish-override-dired-mode)
+  :custom
+  (dirvish-side-display-alist '((side . right) (slot . 1)))
+  (dirvish-side-width 40)
+  ;; icons=nerd-icons、collapse=単一サブディレクトリの折り畳み、
+  ;; file-size=duによるサイズ表示（SI/IEC可読形式）。
+  (dirvish-attributes '(subtree-state nerd-icons collapse file-size))
+  :bind
+  ("C-c SPC t t" . dirvish-side)
+  ("C-x d" . dirvish)
+  ;; C-x 4 d（dired-other-window）を dirvish-dwim に置換。他の窓があれば
+  ;; 選択窓だけ、無ければフルフレームになる dired 兼 dirvish。
+  ("C-x 4 d" . dirvish-dwim)
+  ;; 以下は dirvish 2.3.0 の現行コマンド名で統一（2024-10 時点、
+  ;; straight/repos 内を grep して実在確認済み）。旧README由来の
+  ;; dirvish-quick-visit / dirvish-filter-menu / dirvish-occur /
+  ;; dirvish-sort-by-mtime / dirvish-tabs-* / dirvish-remove-buffer /
+  ;; dirvish-backup-dir-menu / dirvish-subtree-state-toggle は
+  ;; master で廃止・改名されており、バインドだと「Autoloading …
+  ;; failed to define function」の原因になる（use-package の遅延
+  ;; バインドがパッケージ本体を読み込んでシンボル確認するため）。
+  (:map dirvish-mode-map
+        ("/" . dirvish-narrow)
+        ("a" . dirvish-quick-access)
+        ("f" . dirvish-file-info-menu)
+        ("y" . dirvish-yank-menu)
+        ("^" . dired-up-directory)
+        ("H" . dirvish-history-jump)
+        ("h" . dirvish-history-go-backward)
+        ("l" . dirvish-history-go-forward)
+        ("n" . dired-next-line)
+        ("p" . dired-previous-line)
+        ("TAB" . dirvish-subtree-toggle)
+        ;; q は upstream既定の dirvish-quit（フルフレームの復帰キー）。
+        ("s" . dirvish-quicksort)
+        ("F" . dirvish-emerge-menu)
+        ("C-s" . consult-line)
+        (">" . dirvish-side-increase-width)
+        ("<" . dirvish-side-decrease-width)
+        ;; ── 未設定だった便利機能の追補（2026-10） ──
+        ;; SPC は dired-next-line の置換。同じ移動は n/p が担う。
+        ;; { } ; は dirvish-mode-map で空いていた文字（dired 既定込みで走査）。
+        ("SPC" . dirvish-dispatch)
+        ("{" . dirvish-layout-switch)
+        ("}" . dirvish-layout-toggle)
+        (";" . dirvish-setup-menu)
+        ;; 以下はバッファローカルの C-c 前語。dirvish-mode-map の C-c は
+        ;; C-c C-l / C-c C-q 以外空いており、グローバルリーダー
+        ;; C-c SPC とも競合しない。
+        ("C-c /" . dirvish-fd)
+        ("C-c m" . dirvish-mark-menu)
+        ("C-c t" . dirvish-subtree-menu)
+        ("C-c r" . dirvish-renaming-menu)
+        ("C-c v" . dirvish-vc-menu)
+        ("C-c a" . dirvish-chxxx-menu)
+        ("C-c R" . dirvish-rsync)
+        ("C-c h" . dirvish-history-menu)
+        ("C-c c" . dirvish-dired-cheatsheet)
+        ("C-c l" . dirvish-ls-switches-menu)
+        ("C-c f" . dirvish-fd-switches-menu)
+        ("C-c S" . dirvish-rsync-switches-menu)
+        ("C-c w" . dirvish-copy-file-path)
+        ("C-c W" . dirvish-copy-file-name)
+        ("C-c o" . dirvish-find-file-true-path)
+        ("C-c d" . dirvish-total-file-size)
+         ;; ディレクトリ作成が +（dired既定）なので、対応するファイル作成。
+         ;; dired-create-empty-file は Emacs 31 でも既定未バインド。
+         ("C-c i" . dired-create-empty-file))
+  ;; dirvish-masterの現行APIはこのグローバルマイナーモード（旧変数
+  ;; dirvish-side-follow-buffer-fileは廃止済み）。サイドバーがカーソルの
+  ;; ファイル／プロジェクトルートへ自動追従する。
+  :config
+  (dirvish-side-follow-mode 1)
+  ;; dirvish-emerge 用の git 条件を2つ追加する（upstream の predicate は
+  ;; recent/directories/files/symlinks/executables の6つだけで、git 系の
+  ;; 条件は同梱されていない）。predicate はファイル毎に local-name /
+  ;; full-name / type / attrs を引数として呼ばれるので、git を1ファイル
+  ;; 1プロセスで起動すると listing 全体で遅くなる。リポジトリルートで
+  ;; `git status --porcelain -z -uall' を1回だけ実行し、結果を短TTLで
+  ;; キャッシュして参照する（コミット等で2秒以内に状態が変われば再取得）。
+  (with-eval-after-load 'dirvish-emerge
+    (defvar dirvish-emerge--git-status-cache
+      (make-hash-table :test 'equal)
+      "Cache of (ROOT . (STATUS-LIST . TIMESTAMP)) for git predicates.")
+    (defun dirvish-emerge--git-status-list (root)
+      "Return (REL-PATH . XY) pairs from `git status' below ROOT.
+XY is the two-char porcelain status. Cached for 2 seconds."
+      (let* ((now (float-time))
+             (ent (gethash root dirvish-emerge--git-status-cache)))
+        (if (and ent (< (- now (cdr ent)) 2.0))
+            (car ent)
+          (let* ((git (executable-find "git"))
+                 (default-directory root)
+                 (raw (when git
+                        (with-temp-buffer
+                          (ignore-errors
+                            (process-file git nil (current-buffer) nil
+                                          "status" "--porcelain" "-z" "-uall"))
+                          (buffer-string)))))
+            (let (acc pending-second)
+              (dolist (entry (split-string (or raw "") "\0" t))
+                (if pending-second
+                    ;; rename/copy の2番目のエントリは移動先パスそのもの。
+                    (push (cons entry "R") acc)
+                  (push (cons (substring entry 3) (substring entry 0 2)) acc)
+                  (when (string-match-p "[RC]" (substring entry 0 2))
+                    (setq pending-second t))))
+              (let ((result (nreverse acc)))
+                (puthash root (cons result now)
+                         dirvish-emerge--git-status-cache)
+                result))))))
+    (dirvish-emerge-define-predicate git-changed-files
+      "Tracked files with uncommitted changes (staged or unstaged)."
+      (when-let* ((dir (file-name-directory full-name))
+                  (_guard (not (file-remote-p full-name)))
+                  (root (locate-dominating-file dir ".git"))
+                  (root (file-name-as-directory root))
+                  (hit (assoc (file-relative-name full-name root)
+                              (dirvish-emerge--git-status-list root))))
+        (not (equal "??" (cdr hit)))))
+    (dirvish-emerge-define-predicate git-untracked-files
+      "Files not yet registered in Git (untracked)."
+      (when-let* ((dir (file-name-directory full-name))
+                  (_guard (not (file-remote-p full-name)))
+                  (root (locate-dominating-file dir ".git"))
+                  (root (file-name-as-directory root))
+                  (hit (assoc (file-relative-name full-name root)
+                              (dirvish-emerge--git-status-list root))))
+        (equal "??" (cdr hit))))))
+
 ;; wdired: Diredバッファでファイル名やpermissionを直接編集できるようにする。
 ;; Emacs標準機能のため取得は不要。diredで「r」を押すと編集モードに入る。
+;; oil.nvim型の「ステージ→一括適用」モデル:
+;;   d = その行に打ち消し線で削除をステージ（この時点ではまだディスクは無傷。
+;;       wdired外で押すと自動でwdiredに入り、以降 r/rename/a/新規作成も
+;;       同じくステージ扱いになる）
+;;   w = 削除・リネーム・新規作成を一括適用（oilの:w相当）
+;;   q = 何も適用せず破棄して閉じる（oilのq相当）
 (use-package wdired
   :straight nil
   :custom (wdired-allow-to-change-permissions 'advanced)
+  :init
+  ;; Emacs 31では confirm-kill-processes が廃止され、プロセス生存バッファの
+  ;; killが常時yes/no確認になった（subr.elのprocess-kill-buffer-query-
+  ;; function）。diff-hl等の内部一時バッファ（先頭が空白の名前）は
+  ;; 無確認で殺し、shell等の目に見えるバッファは従来どおり確認する。
+  (defun my/kill-buffer-process-query ()
+    "内部（空白始まり名）バッファの確認を省略するkill確認関数。"
+    (let ((process (get-buffer-process (current-buffer))))
+      (or (not process)
+          (not (memq (process-status process) '(run stop open listen)))
+          (not (process-query-on-exit-flag process))
+          (let ((name (buffer-name (current-buffer))))
+            (or (eq ?\s (aref name 0))
+                (yes-or-no-p
+                 (format "Buffer %s has a running process; kill it? "
+                         name)))))))
+  (when (fboundp 'process-kill-buffer-query-function)
+    (remove-hook 'kill-buffer-query-functions
+                 #'process-kill-buffer-query-function)
+    (add-hook 'kill-buffer-query-functions
+              #'my/kill-buffer-process-query))
+  (defface my/oil-strike '((t :inherit dired-flagged :strike-through t))
+    "`my/oil-flag-delete' がステージした削除行の表示。"
+    :group 'dired-faces)
+  (defvar-local my/oil--deletes nil
+    "`my/oil-flag-delete' が打った打ち消し線overlayのリスト（バッファローカル）。")
+  (defun my/oil--any-flagged-p ()
+    "バッファにdiredの削除フラグ（先頭 ?D）が1つでもあればt。"
+    (save-excursion
+      (goto-char (point-min))
+      (catch 'hit
+        (while (progn (skip-chars-forward " \t\n\r") (not (eobp)))
+          (when (eq ?D (char-after (line-beginning-position)))
+            (throw 'hit t))
+          (forward-line 1))
+        nil)))
+  (defun my/oil-flag-delete ()
+    "カーソル行のエントリをoil.nvim風に削除ステージする。
+画面に打ち消し線が出るだけで、ディスクはまだ何も変わらない。同じ行で
+もう一度押すと取消。wdired以外で押した場合は自動でwdired編集に入るため、
+rename（行のテキスト編集）や a（ファイル作成）も同じ「w で一括適用」に
+載る。適用は `my/wdired-apply'。"
+    (interactive)
+    (unless (or (derived-mode-p 'dired-mode) (eq major-mode 'wdired-mode))
+      (user-error "Dired/dirvish バッファでのみ使えます"))
+    ;; Emacs 31のwdiredは minor-mode変数を持たない（major-modeを
+    ;; 'wdired-modeに差し替える実装）ため、状態はmajor-modeで見る。
+    (unless (eq major-mode 'wdired-mode)
+      (wdired-change-to-wdired-mode))
+    (let* ((bol (line-beginning-position))
+           (live (seq-filter #'overlay-buffer my/oil--deletes))
+           (hit (seq-find (lambda (o)
+                            (and (<= (overlay-start o) bol)
+                                 (< bol (overlay-end o))))
+                          live)))
+      (if hit
+          (progn
+            (delete-overlay hit)
+            (setq my/oil--deletes (delq hit my/oil--deletes)))
+        (let ((name (dired-get-filename 'no-dir t))
+              (file (dired-get-filename nil t)))
+          (cond
+           ((null file) (user-error "この行にファイル名がありません"))
+           ((member name '("." "..")) (user-error "%s は削除できません" name))
+           (t
+            ;; 絶対パスをステージ時点での名前としてオーバーレイに保持。
+            ;; 適用前に同じ行をリネームしても、削除対象は元の名のまま。
+            (let ((o (make-overlay bol (line-end-position) nil t t)))
+              (overlay-put o 'face 'my/oil-strike)
+              (overlay-put o 'priority 90)
+              (overlay-put o 'my/oil-file file)
+              (push o my/oil--deletes))))))))
+  (defun my/wdired-apply ()
+    "wdired バッファでステージされた変更をまとめて適用する（oilの:w）。
+打ち消し線ステージ分の削除を先に実ファイルへ適用し、続けて
+`wdired-finish-edit' を走らせるので、削除とリネームと新規作成が1回のwで
+同時に効く。wdired外では、diredフラグ（?D）が残っていれば
+`dired-do-flagged-delete'、無ければ本来の
+`dired-copy-filename-as-kill'（ファイル名コピー）にフォールバックする。"
+    (interactive)
+    (cond
+     ((eq major-mode 'wdired-mode)
+      ;; Emacs 31のwdiredは「行そのものの削除」を削除として検出しない
+      ;; （ファイル名テキストの空欄化のみが files-deleted に入り、
+      ;; さらに finish-edit 中の revert で行が復活する）。そのため
+      ;; 削除はここで dired の削除機構を直接適用してしまう。
+      ;; ステージ時の絶対パスをオーバーレイから取るため、適用前に
+      ;; 行をリネームしていても削除対象は元のファイル名のまま。
+      (let ((fails 0))
+        (dolist (ov (sort (seq-filter #'overlay-buffer my/oil--deletes)
+                          (lambda (a b) (> (overlay-start a) (overlay-start b)))))
+          (when-let ((file (overlay-get ov 'my/oil-file)))
+            (condition-case err
+                (dired-delete-file file dired-recursive-deletes
+                                   delete-by-moving-to-trash)
+              ((debug error)
+               (cl-incf fails)
+               (dired-log "Failed to delete %s:\n%s\n"
+                          file (error-message-string err)))))
+          (delete-overlay ov))
+        (setq my/oil--deletes nil)
+        (when (> fails 0)
+          (message "%d 件の削除に失敗（*Dired log* 参照）" fails)))
+      (wdired-finish-edit))
+     ((my/oil--any-flagged-p)
+      (dired-do-flagged-delete))
+     (t
+      (call-interactively #'dired-copy-filename-as-kill))))
+  (defun my/wdired-abort-quit ()
+    "変更を一切適用せず破棄して閉じる（oilのq）。
+ステージ済みの削除・リネーム・新規作成はすべてディスクに触れずに消える。
+dirvishセッション内なら `dirvish-quit'、そうでなければ窓を閉じる。"
+    (interactive)
+    (unless (eq major-mode 'wdired-mode)
+      (user-error "wdired 編集モードではありません"))
+    (dolist (ov my/oil--deletes)
+      (when (overlay-buffer ov)
+        (delete-overlay ov)))
+    (setq my/oil--deletes nil)
+    (wdired-abort-changes)
+    (cond
+     ((and (fboundp 'dirvish-curr) (dirvish-curr)) (dirvish-quit))
+     ((one-window-p t) (bury-buffer))
+     (t (quit-window 'kill))))
   :bind (:map dired-mode-map
-              ("r" . wdired-change-to-wdired-mode)))
+              ("r" . wdired-change-to-wdired-mode)
+              ("d" . my/oil-flag-delete)
+              ("w" . my/wdired-apply))
+       (:map wdired-mode-map
+              ("d" . my/oil-flag-delete)
+              ("w" . my/wdired-apply)
+              ("q" . my/wdired-abort-quit)
+              ("a" . dired-create-empty-file)))
 
 (use-package diredfl
   :config (diredfl-global-mode 1))
-
-(use-package nerd-icons-dired
-  :hook (dired-mode . nerd-icons-dired-mode))
-
-(use-package dired-collapse
-  :hook (dired-mode . dired-collapse-mode))
-
-(use-package dired-narrow
-  :bind (:map dired-mode-map
-              ("/" . dired-narrow)))
 
 (use-package symon
   :demand t
@@ -417,9 +778,10 @@
   (define-key tab-prefix-map (kbd "r") #'my/tab-bar-rename-tab))
 
 ;; treemacs: 右側のファイルツリー。プロジェクト追従・Git表示・状態永続化に対応。
+;; 導線（リーダー t t）は dirvish-side へ移行済み。ここは設定のみ残置し、
+;; M-x treemacs で従来通り呼び出せる（tab-bar連携の設定もそのまま有効）。
 (use-package treemacs
   :defer t
-  :bind (("C-q" . treemacs))
   :config
   (treemacs-project-follow-mode 1)
   (treemacs-filewatch-mode 1)
@@ -448,6 +810,134 @@
   :demand t
   :config
   (flycheck-pos-tip-mode 1))
+
+;; consult-flycheck: consult repo 同梱の診断一覧（vertico/orderless/marginalia 乗り）。
+;; leader =e f= の非LSPバッファ側フォールバックで使う。
+(use-package consult-flycheck :straight t :defer t)
+
+;; 窓を割らないfloat系ヘルパー。このEmacs 31.1ビルドにはtooltip-show-at-pointが
+;; 無いので、tooltip-frame-parametersのleft/topでカーソル位置に置く。
+(defun my/tooltip-at-point (text)
+  "カーソル付近にTEXTのツールチップをfloat表示する（窓は割らない）。"
+  (require 'tooltip nil t)
+  (if (not (and (display-graphic-p) (fboundp 'tooltip-show)))
+      (message "%s" (string-trim text))
+    (condition-case nil
+        (let ((tooltip-frame-parameters
+               (append (when (fboundp 'x-window-pixel-position)
+                         (let ((xy (x-window-pixel-position)))
+                           `((left . ,(car xy)) (top . ,(1+ (cdr xy))))))
+                       tooltip-frame-parameters)))
+          (tooltip-show text))
+      ((debug error) (message "%s" (string-trim text))))))
+
+;; lspce 有効化ガード。この関数は起動時に定義される（use-package は defer）。
+;; 各モードの hook から呼ばれ、(1) lspce がロードできる（Rust モジュール実在）、
+;; (2) このバッファの種別に対応するサーバーコマンドが実行可能、の両方を満たす時だけ
+;; lspce-mode を立てる。満たさないバッファ（yaml/lua 等の非対応モード）では
+;; 完全に無音で何もしない。
+(defun my/lspce-maybe-enable ()
+  "サーバーが実在するバッファだけ lspce-mode を有効化する。"
+  (when buffer-file-name
+    (when-let ((servers
+                (condition-case nil
+                    (progn
+                      (require 'lspce)
+                      (lspce--server-program (lspce--lsp-type)))
+                  ((debug error) nil))))
+      (when (seq-some (lambda (p) (executable-find (car p))) servers)
+        (lspce-mode 1)))))
+
+;; leader の =l= グループ用ラッパー。lspce は autoload cookie が薄いので、
+;; require してから対話実行する（xref-find-* は autoload 済みなので直 binds）。
+(defun my/lspce-code-actions ()
+  "code action 候補一覧から選んで実行する。"
+  (interactive)
+  (unless (bound-and-true-p lspce-mode)
+    (user-error "このバッファにはLSPサーバが接続されていません"))
+  (require 'lspce)
+  (call-interactively #'lspce-code-actions))
+(defun my/lspce-rename ()
+  "カーソル位置のシンボルをプロジェクト全体でリネームする。"
+  (interactive)
+  (unless (bound-and-true-p lspce-mode)
+    (user-error "このバッファにはLSPサーバが接続されていません"))
+  (require 'lspce)
+  (call-interactively #'lspce-rename))
+(defun my/lspce-inlay-hints ()
+  "inlay hints（型・引数名の薄い表示）をトグルする。"
+  (interactive)
+  (unless (bound-and-true-p lspce-mode)
+    (user-error "このバッファにはLSPサーバが接続されていません"))
+  (require 'lspce)
+  (lspce-inlay-hints-mode 1))
+(defun my/lspce-workspace-symbol (pattern)
+  "ワークスペース全体のシンボルを PATTERN で検索し Consult 一覧を出す。"
+  (interactive "sWorkspace symbol: ")
+  (unless (bound-and-true-p lspce-mode)
+    (user-error "このバッファにはLSPサーバが接続されていません"))
+  (require 'lspce)
+  (if-let ((xrefs (xref-backend-apropos 'xref-lspce pattern)))
+      (xref-show-xrefs xrefs 'apropos)
+    (user-error "シンボルが見つかりません")))
+(defun my/lsp-diag-list ()
+  "診断一覧。lspce(flymake)バッファは flymake 一覧、他は consult-flycheck。"
+  (interactive)
+  (if (and (bound-and-true-p lspce-mode) (bound-and-true-p flymake-mode))
+      (progn (require 'flymake) (flymake-show-buffer-diagnostics))
+    (consult-flycheck)))
+
+;; nvimのK相当: カーソル位置のドキュメント/診断をポップアップで出す。
+;; 優先順は LSP hover → elispの完全ドキュメント → eldocシグネチャ → 無しメッセージ。
+;; describe-symbolを全モードで拾うとpythonのlist/map等がelispのdocと
+;; 衝突して誤爆するので、elisp派生モードに限定する。
+(defun my/doc-symbol ()
+  "elisp派生モードでsymbol-at-pointの完全docを出す。無ければnil。"
+  (when (derived-mode-p 'emacs-lisp-mode)
+    ;; thing-at-pointは文字列を返す。describe-symbolはsymbol必須なので
+    ;; fbound/bound実在チェック後にinternする。
+    (when-let* ((name (thing-at-point 'symbol 'no-properties))
+                (sym (intern-soft name))
+                ((or (fboundp sym) (boundp sym))))
+      (condition-case nil
+          (progn (describe-symbol sym) t)
+        ((debug user-error) nil)))))
+
+(defun my/doc-eldoc ()
+  "eldocが最後に生成したdocをツールチップで出す。無ければnil。"
+  (when-let ((buf (and (fboundp 'eldoc-doc-buffer)
+                       ;; 対話外で呼ぶとdocバッファ未生成時にuser-errorを
+                       ;; 投げる（eldoc.el:513）ので、無しはnilとして扱う。
+                       (condition-case nil (eldoc-doc-buffer)
+                         (user-error nil))))
+             ((> (buffer-size buf) 0)))
+    (my/tooltip-at-point
+     (with-current-buffer buf
+       (string-trim (buffer-substring-no-properties (point-min) (point-max)))))
+    t))
+
+(defun my/doc-at-point ()
+  "カーソル位置のホバー情報を表示する（nvimのK代替）。"
+  (interactive)
+  (cond
+   ((and (fboundp 'lspce-help-at-point) (bound-and-true-p lspce-mode))
+    ;; lspce は hover を posframe の float でカーソル位置に出す（窓は割らない）。
+    ;; posframe 不可の環境は my/lspce--display-help-reduce が tooltip に退避させる。
+    (message "doc-at-point: LSP hover経路（lspce posframe float）")
+    (condition-case e
+        (progn (lspce-help-at-point) t)
+      ((debug error)
+       (message "lspce hover失敗: %s → eldocにフォールバック"
+                (error-message-string e))
+       nil)))
+   ((my/doc-symbol))
+   ((my/doc-eldoc))
+   (t (message "カーソル位置のドキュメントはありません"))))
+;; 注意: printable文字のKをグローバルバインドすると、Kを明示バインドしていない
+;; モード（python/ts/org/elisp等）で大文字Kのタイピングがホバーになる。
+;; 競合監査の結果、printableでない =C-c h= に決定（dirvish内だけ局所定義の
+;; dirvish-history-menuが勝つが、ディレクトリ画面にhoverは不要なので許容）。
+(global-set-key (kbd "C-c h") #'my/doc-at-point)
 (use-package yasnippet
   :demand t
   :custom (yas-snippet-dirs
@@ -465,22 +955,90 @@
   :config (global-treesit-auto-mode 1))
 (use-package apheleia :config (apheleia-global-mode 1))
 
-(use-package lsp-mode
-  :commands (lsp lsp-deferred)
+;; lspce の依存（README 記載）。f と markdown-mode は lspce.el がロード時に
+;; require するが、lspce に Package-Requires 宣言が無いので straight には
+;; 明示宣言が必要（無いとロード時 require で落ちる）。yasnippet は導入済み。
+(use-package f :straight t :defer t)
+(use-package markdown-mode :straight t :defer t)
+;; hover float の描画先。無いと lspce は別窓表示に退避する（窓を割られる）。
+;; MELPA に recipe が無いので GitHub 直指定（lspce と同じ作者）。posframe は
+;; Package-Requires 経由で MELPA から自動導入される。
+(use-package posframe-plus
+  :straight (posframe-plus :type git :host github :repo "zbelial/posframe-plus")
+  :defer t)
+
+(use-package lspce
+  :straight (lspce :type git :host github :repo "zbelial/lspce"
+            :files (:defaults (:exclude "src" "Cargo.toml" "Cargo.lock" "docs" "images")
+                              "lspce-module.so")
+            :pre-build (("cargo" "build" "--release")
+                        ("cp" "./target/release/liblspce_module.so" "./lspce-module.so")))
+  :commands lspce-mode
   :custom
-  (lsp-keymap-prefix "C-c l")
-  (lsp-enable-file-watchers nil)
-  (lsp-completion-provider :none)
-  (lsp-headerline-breadcrumb-enable t)
-  (lsp-marksman-server-command (expand-file-name "~/.local/share/mise/installs/marksman/latest/marksman"))
-  :init
-  (defun my/lsp-mode-setup-completion ()
-    (setf (alist-get 'styles (alist-get 'lsp-capf completion-category-defaults))
-          '(orderless)))
-  :hook (lsp-completion-mode . my/lsp-mode-setup-completion))
-(use-package lsp-ui :after lsp-mode :commands lsp-ui-mode)
-(use-package lsp-treemacs :after lsp-mode)
-(use-package dap-mode :after lsp-mode :commands dap-debug)
+  (lspce-send-changes-idle-time 0.2)
+  ;; imenu をサーバー索引に（consult-imenu が kind 付きで拾える）。
+  (lspce-enable-imenu-index-function t)
+  ;; hover を eldoc（エコーエリア）へ流さない。lsp-mode 時代の
+  ;; lsp-ui-doc 相当の「hover は C-c h の float のみ」に戻し、
+  ;; アイドル時の hover 往復も減らす。minibuffer には signature だけ出る。
+  (lspce-eldoc-enable-hover nil)
+  :config
+  ;; marksman は markdown、tsserver は typescript/js/json を担当。mise 絶対パスで
+  ;; 指定し、GUI emacs の PATH 問題の影響を受けないようにする（marksman/oxfmt と同じ方針）。
+  (let ((tsl (expand-file-name "~/.local/share/mise/installs/npm-typescript-language-server/latest/bin/typescript-language-server"))
+        (marksman (expand-file-name "~/.local/share/mise/installs/marksman/latest/marksman")))
+    (setq lspce-server-programs
+          `(("rust" "rust-analyzer" "")
+            ("python" "jedi-language-server" "")
+            ("python" "pylsp" "")
+            ("go" "gopls" "")
+            ("typescript" ,tsl "--stdio")
+            ("js" ,tsl "--stdio")
+            ("json" ,tsl "--stdio")
+            ("markdown" ,marksman ""))))
+  ;; md-mode（yibie/md-mode）の type は "md" になり default と噛み合わないため
+  ;; markdown に正規化する。
+  (defun my/lspce-lsp-type ()
+    "lspce の言語種別。markdown 系を \"markdown\" に正規化する。"
+    (if (memq major-mode '(markdown-mode markdown-ts-mode md-mode))
+        "markdown"
+      (funcall #'lspce--lsp-type-default)))
+  (setq lspce-lsp-type-function #'my/lspce-lsp-type)
+  ;; xref 結果（定義/参照/実装/apropos）は Consult 一覧で出す。
+  (setq xref-show-xrefs-function #'consult-xref
+        xref-show-definitions-function #'consult-xref)
+  ;; lspce バッファの診断は flymake が担当。flycheck を同時に見せると
+  ;;  fringe/下線が二重になるので、flycheck は該当バッファだけ止める。
+  ;; markdown は flycheck（textlint 等）が主役なので flycheck を残す。
+  (add-hook 'lspce-mode-hook
+            (lambda ()
+              (when (and (fboundp 'flycheck-mode)
+                         (not (memq major-mode '(markdown-mode markdown-ts-mode md-mode))))
+                (flycheck-mode -1)))))
+
+;; hover float を everforest soft の float 配色に寄せる。lspce は描画時に
+;; #191a1b（漆黒）/ 枠 "orange" を直書きするため、posframe-plus-show の
+;; 引数を *lspce-hover* バッファに限定して差し替える（bg2=#465258, bg3=#505a60）。
+(with-eval-after-load 'posframe-plus
+  (defun my/lspce-posframe-colors (args)
+    "lspce の hover float だけ背景/枠色をテーマ色に置換する。"
+    (if (and (stringp (car-safe args))
+             (string= (car args) "*lspce-hover*"))
+        (append (list (nth 0 args) (nth 1 args) (nth 2 args))
+                ;; nthc は subr-x のため単独ロード環境では void を引くことがある。
+                (let ((plist (nthcdr 3 args)))
+                  (plist-put (plist-put plist :background-color "#465258")
+                             :internal-border-color "#505a60")))
+      args))
+  (advice-add 'posframe-plus-show :filter-args #'my/lspce-posframe-colors)
+  ;; posframe が使えない環境では lspce は別窓表示に逃げるが、それは
+  ;; 「窓を割らない」方針に反するので tooltip に退避させる。
+  (defun my/lspce--display-help-reduce (orig kind content)
+    "posframe 不可時は hover を tooltip で出す（窓分割禁止）。"
+    (if (and (fboundp 'posframe-workable-p) (posframe-workable-p))
+        (funcall orig kind content)
+      (my/tooltip-at-point content)))
+  (advice-add 'lspce--display-help :around #'my/lspce--display-help-reduce))
 
 (use-package flymake-proc)
 
@@ -548,40 +1106,123 @@
          ("M-," . smart-jump-back)
          ("M-?" . smart-jump-references)))
 
-(use-package python :straight nil :hook (python-ts-mode . lsp-deferred))
-(use-package go-mode :mode "\\.go\\'" :hook (go-mode . lsp-deferred))
+(use-package python :straight nil :hook (python-ts-mode . my/lspce-maybe-enable))
+(use-package go-mode :mode "\\.go\\'" :hook (go-mode . my/lspce-maybe-enable))
 (use-package rust-mode
   :mode "\\.rs\\'"
   :custom (rust-format-on-save t)
-  :hook (rust-mode . lsp-deferred))
+  :hook (rust-mode . my/lspce-maybe-enable))
 
-(use-package typescript-mode :mode "\\.ts\\'" :hook (typescript-mode . lsp-deferred))
+(use-package typescript-mode
+  :mode "\\.ts\\'"
+  :hook ((typescript-mode . my/lspce-maybe-enable)
+         (typescript-mode . my/oxfmt-ts-mode-setup))
+  :custom (my/oxfmt-command (expand-file-name "~/.local/share/mise/installs/node/latest/bin/oxfmt"))
+  :init
+  (defcustom my/oxfmt-command "oxfmt"
+    "TypeScript 整形用の oxfmt コマンド。"
+    :type 'string
+    :group 'languages)
+  (defcustom my/format-timeout-seconds 10
+    "外部整形コマンドの待機上限（秒）。`my/format-with-process' が使用。"
+    :type 'number
+    :group 'languages)
+  (defun my/format-with-process (command args &optional timeout)
+    "buffer 内容を COMMAND に ARGS 付きでパイプ投入し、0 終了なら stdout を反映。
+`call-process-region' と違い、待機は 100ms 刻みの `accept-process-output' ループ
+（ Emacs 31 ではこの関数の timeout 位置引数が REMOTE 扱いで使えない）。TIMEOUT
+秒（省略時 `my/format-timeout-seconds'）でプロセスを kill して buffer は変更
+しない。CLI がハングしても Emacs がフリーズせず C-g でも中断できる。"
+    (let* ((timeout (or timeout my/format-timeout-seconds))
+           (out (generate-new-buffer " *format-out*"))
+           (errb (generate-new-buffer " *format-err*"))
+           (proc nil))
+      (unwind-protect
+          (condition-case sig
+              (progn
+                (setq proc (make-process
+                            :name (format "format %s" (file-name-nondirectory command))
+                            :command (cons command args)
+                            :buffer out
+                            :stderr errb
+                            ;; デフォルト sentinel は "Process ... finished" を
+                            ;; :buffer に追記し、整形出力に混入するため無効化。
+                            :sentinel (lambda (_proc _event) nil)
+                            :connection-type 'pipe
+                            :coding 'utf-8-unix
+                            :noquery t))
+                (process-send-region proc (point-min) (point-max))
+                (process-send-eof proc)
+                (let ((deadline (+ (float-time) timeout)))
+                  ;; 'exit 検知で止めると stdout が途中で取り込まれるため、
+                  ;; sentinel 込みの後始末完了（process-live-p が nil）まで待つ。
+                  (while (and (process-live-p proc) (< (float-time) deadline))
+                    (accept-process-output proc 0.1))
+                  (cond
+                   ((process-live-p proc)
+                    (message "my/format-with-process: %s: タイムアウト (%ds)、kill しました"
+                             command timeout)
+                    (delete-process proc)
+                    nil)
+                   ((= (process-exit-status proc) 0)
+                    (save-excursion
+                      (goto-char (point-min))
+                      (replace-buffer-contents out))
+                    t)
+                   (t
+                    (message "my/format-with-process: %s exit %s: %s"
+                             command (process-exit-status proc)
+                             (with-current-buffer errb (string-trim (buffer-string))))
+                    nil))))
+            ((error quit)
+             ;; 起動直後の死（PATH に node が無い等）や C-g 中断はここでは無変更。
+             (message "my/format-with-process: %s: %S" command sig)
+             nil))
+        (when (and proc (process-live-p proc))
+          (delete-process proc))
+        (kill-buffer out)
+        (kill-buffer errb))))
+  (defun my/oxfmt-format-buffer ()
+    "oxfmt を buffer に対して走らせ、結果をその場で反映する。
+`replace-buffer-contents' で point 保存。oxfmt が非 0 終了（構文エラー等）
+なら buffer は触らない。"
+    (interactive)
+    (when-let ((cmd (executable-find my/oxfmt-command)))
+      (my/format-with-process cmd
+                              (list "--stdin-filepath"
+                                    (or (buffer-file-name) (buffer-name))))))
+  (defun my/oxfmt-ts-mode-setup ()
+    "typescript-mode で保存時整形を tsserver でなく oxfmt に切り替える。
+LSP の documentFormatting（tsserver 内蔵・別スタイル）と二重競合するため、
+この buffer だけ format-on-save を落とし、before-save で oxfmt を走らせる。
+診断等の LSP 機能自体はそのまま残る。"
+    (add-hook 'before-save-hook #'my/oxfmt-format-buffer nil t)))
 (use-package web-mode
   :mode (("\\.tsx\\'" . web-mode)
          ("\\.jsx\\'" . web-mode)
          ("\\.svelte\\'" . web-mode))
-  :hook (web-mode . lsp-deferred))
-(use-package svelte-mode :mode "\\.svelte\\'" :hook (svelte-mode . lsp-deferred))
+  :hook (web-mode . my/lspce-maybe-enable))
+(use-package svelte-mode :mode "\\.svelte\\'" :hook (svelte-mode . my/lspce-maybe-enable))
 
-(use-package yaml-mode :mode "\\.ya?ml\\'" :hook (yaml-mode . lsp-deferred))
-(use-package toml-mode :mode "\\.toml\\'" :hook (toml-mode . lsp-deferred))
-(use-package json-mode :mode "\\.json\\'" :hook (json-mode . lsp-deferred))
-(use-package lua-mode :mode "\\.lua\\'" :hook (lua-mode . lsp-deferred))
+(use-package yaml-mode :mode "\\.ya?ml\\'" :hook (yaml-mode . my/lspce-maybe-enable))
+(use-package toml-mode :mode "\\.toml\\'" :hook (toml-mode . my/lspce-maybe-enable))
+(use-package json-mode :mode "\\.json\\'" :hook (json-mode . my/lspce-maybe-enable))
+(use-package lua-mode :mode "\\.lua\\'" :hook (lua-mode . my/lspce-maybe-enable))
 
-(use-package erlang :mode "\\.erl\\'" :hook (erlang-mode . lsp-deferred))
-(use-package elixir-mode :mode "\\.exs?\\'" :hook (elixir-mode . lsp-deferred))
-(use-package gleam-ts-mode :mode "\\.gleam\\'" :hook (gleam-ts-mode . lsp-deferred))
-(use-package haskell-mode :mode "\\.hs\\'" :hook (haskell-mode . lsp-deferred))
-(use-package tuareg :mode "\\.mli?\\'" :hook (tuareg-mode . lsp-deferred))
-(use-package kotlin-mode :mode "\\.kts?\\'" :hook (kotlin-mode . lsp-deferred))
+(use-package erlang :mode "\\.erl\\'" :hook (erlang-mode . my/lspce-maybe-enable))
+(use-package elixir-mode :mode "\\.exs?\\'" :hook (elixir-mode . my/lspce-maybe-enable))
+(use-package gleam-ts-mode :mode "\\.gleam\\'" :hook (gleam-ts-mode . my/lspce-maybe-enable))
+(use-package haskell-mode :mode "\\.hs\\'" :hook (haskell-mode . my/lspce-maybe-enable))
+(use-package tuareg :mode "\\.mli?\\'" :hook (tuareg-mode . my/lspce-maybe-enable))
+(use-package kotlin-mode :mode "\\.kts?\\'" :hook (kotlin-mode . my/lspce-maybe-enable))
 
-(use-package sql :straight nil :hook (sql-mode . lsp-deferred))
+(use-package sql :straight nil :hook (sql-mode . my/lspce-maybe-enable))
 (use-package textui
   :straight (:host github :repo "yibie/textui"))
 (use-package md-mode
   :straight (:host github :repo "yibie/md-mode")
   :mode "\\.md\\'"
-  :hook (md-mode . lsp-deferred)
+  :hook (md-mode . my/lspce-maybe-enable)
   :custom
   (md-render-mermaid-enabled t)
   (md-render-mermaid-command (expand-file-name "~/.bun/bin/mmdc"))
@@ -627,15 +1268,150 @@
     (advice-add 'md-render--media-cache-file :around
                 #'my/md-render-media-cache-file-with-mermaid-scale)))
 
-(with-eval-after-load 'lsp-mode
-  (add-to-list 'lsp-language-id-configuration
-               '(md-mode . "markdown")))
-(use-package typst-ts-mode :mode "\\.typ\\'" :hook (typst-ts-mode . lsp-deferred))
+(use-package typst-ts-mode :mode "\\.typ\\'" :hook (typst-ts-mode . my/lspce-maybe-enable))
+
+(use-package diagram-viewer
+  :straight (:host github :repo "wtnqk/diagram-viewer")
+  :after md-mode
+  :demand t
+  :custom
+  (diagram-viewer-cache-directory
+   (no-littering-expand-var-file-name "diagram-viewer/cache/"))
+  :config
+  (require 'diagram-viewer-adapter-mermaid)
+  (require 'diagram-viewer-adapter-md-mode)
+
+  ;; 既存の実行ファイル設定だけを再利用する。
+  ;; PNG用のscale設定はSVG rendererへ渡さない。
+  (setq diagram-viewer-mermaid-command md-render-mermaid-command
+        diagram-viewer-mermaid-browser-executable
+        md-render-mermaid-browser)
+
+  ;; 明示的な置換を許可し、このブロックの再評価にも対応する。
+  (diagram-viewer-mermaid-enable t)
+  (diagram-viewer-md-mode-enable t)
+
+  (define-key md-mode-map (kbd "C-c d")
+              #'diagram-viewer-view-at-point)
+  (define-key md-mode-map (kbd "C-c D")
+              #'diagram-viewer-md-mode-view-rendered-at-point))
+
+;; Emacs 31.1 未満には内蔵 markdown-ts-mode が無く、require に失敗する。
+(when (version<= "31.1" emacs-version)
+  ;; 内蔵モードへ .md を割り当てる。このブロックは SQLと文書形式 の
+  ;; yibie/md-mode より後に評価されるため、auto-mode-alist で prepend 優先となる。
+  (use-package markdown-ts-mode
+    :straight nil
+    :mode "\\.md\\'"
+    :hook (markdown-ts-mode . my/lspce-maybe-enable))
+  ;; yibie側のRendered viewはmd-mode限定（derived-mode check）。 内蔵モードの
+  ;; C-c C-vはn/pだけ使うので、空いているC-c C-v mでmd-modeへ乗り換える。
+  ;; md-mode側ではC-c C-vが単体コマンドのため、同じ接頭辞には足さない。
+  (defun my/markdown-switch-to-md-mode ()
+    "Switch the current buffer to `md-mode' (Rendered view lives there)."
+    (interactive)
+    (if (derived-mode-p 'md-mode)
+        (user-error "Already in md-mode")
+      (md-mode)))
+  (defun my/markdown-switch-to-markdown-ts-mode ()
+    "Switch the current buffer back to the built-in `markdown-ts-mode'."
+    (interactive)
+    (if (derived-mode-p 'markdown-ts-mode)
+        (user-error "Already in markdown-ts-mode")
+      (markdown-ts-mode)))
+  (with-eval-after-load 'markdown-ts-mode
+    (keymap-set markdown-ts-mode-map "C-c C-v m"
+                #'my/markdown-switch-to-md-mode))
+  ;; md-mode側ではC-c C-vがリーブなので逆方向は空いているC-c C-r（return）。
+  (with-eval-after-load 'md-mode
+    (keymap-set md-mode-map "C-c C-r"
+                #'my/markdown-switch-to-markdown-ts-mode))
+  (use-package markdown-ts-appear
+    :straight (:host github :repo "Thysrael/markdown-ts-appear")
+    :hook (markdown-ts-mode . markdown-ts-appear-mode)
+    :config
+    ;; Mermaid図プレビュー。mmdc は bun グローバル、Chrome は md-mode と同一。
+    ;; Puppeteer はこの環境変数で既存 Chrome を使う（SVG出力は実機確認済み）。
+    (setenv "PUPPETEER_EXECUTABLE_PATH" "/usr/sbin/google-chrome")
+    (setopt markdown-ts-appear-diagram-renderers
+            (list (cons "mermaid"
+                        (lambda (language code theme callback)
+                          (markdown-ts-appear-diagram-mmdc
+                           language code theme callback
+                           (expand-file-name "~/.bun/bin/mmdc"))))))
+    ;; 数式プレビューの手順（既定無効。TeX が入っていない状態での有効化不可）:
+    ;; 1. sudo dnf install texlive-latex dvisvgm   (既定エンジン)
+    ;; 2. (use-package latex-to-svg-for-markdown :straight t :defer t)
+    ;;    で MELPA 版 (>= 0.22.2) を導入
+    ;; 3. (setopt markdown-ts-appear-enable-math-preview t)
+    ;;    して markdown-ts-appear-mode を入れ直す
+    ))
+
+;; buffer 内容を CLI の stdin に流し stdout を反映する共通処理。
+;; replace-buffer-contents で point を保持し、終了コード非 0
+;; （構文エラー等）では buffer を変更しない。
+(defun my/cli-format-buffer (command &rest args)
+  "Feed buffer contents to COMMAND with ARGS on stdin and apply stdout.
+実体は `my/format-with-process'（非同期＋タイムアウト付き）。"
+  (my/format-with-process command args))
+
+(defcustom my/node-command
+  (expand-file-name "~/.local/share/mise/installs/node/latest/bin/node")
+  "mermaid ブロックパス用の node。
+marksman や oxfmt と同じく mise の絶対パスで指定し、GUI emacs の
+PATH 問題の影響を受けないようにする。"
+  :type 'string
+  :group 'languages)
+
+(defcustom my/mermaid-md-script
+  (expand-file-name "var/formatters/md-mermaid.mjs" user-emacs-directory)
+  "Markdown 内の mermaid ブロックを整形する vendored スクリプト。"
+  :type 'string
+  :group 'languages)
+
+(defcustom my/mermaidfmt-command
+  (expand-file-name "var/formatters/node_modules/.bin/mermaidfmt"
+                    user-emacs-directory)
+  ".mmd 整形用の mermaidfmt CLI（var/formatters に vendoring 済み）。"
+  :type 'string
+  :group 'languages)
+
+(defun my/markdown-format-buffer ()
+  "Markdown を整形する。oxfmt 本文 + mermaid ブロックは mermaid-formatter。"
+  (interactive)
+  (my/oxfmt-format-buffer)
+  (when (and (file-exists-p my/mermaid-md-script)
+             (executable-find my/node-command))
+    (my/cli-format-buffer my/node-command my/mermaid-md-script)))
+
+(defun my/mermaid-format-buffer ()
+  "mermaid ソース（.mmd）を mermaidfmt で整形する。"
+  (interactive)
+  (my/cli-format-buffer my/mermaidfmt-command))
+
+(defun my/mermaid-format-on-save ()
+  "mermaid buffer で保存時に整形を走るようにする。"
+  (add-hook 'before-save-hook #'my/mermaid-format-buffer nil t))
+
+(defun my/markdown-format-on-save ()
+  "Markdown/mermaid buffer で保存時に整形を走るようにする。
+lspce にはフォーマット機能が無い（textDocument/formatting を発らない）ため、
+保存時の整形は oxfmt + mermaid-formatter に一本化できる。marksman は
+hover/補完用の接続に留まる。"
+  (add-hook 'before-save-hook #'my/markdown-format-buffer nil t))
+
+;; .mmd には mermaid-mode パッケージ（diagrams 節で導入済み、:mode で
+;; \.mmd/\.mermaid を占有）を使う。自作モードは不要なのでフックだけ載せる。
+(add-hook 'mermaid-mode-hook #'my/mermaid-format-on-save)
+
+(add-hook 'markdown-ts-mode-hook #'my/markdown-format-on-save)
+;; yibie/md-mode に切り替えた buffer でも同じ整形が走る。
+(add-hook 'md-mode-hook #'my/markdown-format-on-save)
 
 (use-package zig-mode
   :mode "\\.zig\\'"
   :custom (zig-format-on-save nil)
-  :hook (zig-mode . lsp-deferred))
+  :hook (zig-mode . my/lspce-maybe-enable))
 
 (defun my/ansible-maybe-enable ()
   "Enable Ansible support for YAML files in conventional Ansible paths."
@@ -665,8 +1441,17 @@
 (use-package dockerfile-mode
   :mode (("Dockerfile.*\\'" . dockerfile-mode)
          ("\\.dockerfile\\'" . dockerfile-mode)))
-(use-package elm-mode :mode "\\.elm\\'" :hook (elm-mode . lsp-deferred))
+(use-package elm-mode :mode "\\.elm\\'" :hook (elm-mode . my/lspce-maybe-enable))
 (use-package fish-mode :mode (("\\.fish\\'" . fish-mode) ("/config\\.fish\\'" . fish-mode)))
+
+(use-package ghostel
+  :commands (ghostel ghostel-project ghostel-compile)
+  :custom
+  (ghostel-module-directory (expand-file-name "var/ghostel/" user-emacs-directory))
+  (ghostel-module-auto-install 'download))
+
+(use-package prism
+  :commands (prism-mode prism-whitespace-mode))
 
 (use-package hcl-mode :mode (("\\.hcl\\'" . hcl-mode) ("\\.tfvars\\'" . hcl-mode)))
 (use-package ini-mode :mode "\\.ini\\'")
@@ -681,7 +1466,7 @@
                '("\\(?:---[[:space:]]*\\)?apiVersion:[[:space:]]" . k8s-mode))
   :custom (k8s-indent-offset 2)
   :hook ((k8s-mode . yas-minor-mode)
-         (k8s-mode . lsp-deferred)))
+         (k8s-mode . my/lspce-maybe-enable)))
 
 (defun my/helm-template-maybe-enable ()
   "Enable Go template highlighting inside a Helm chart."
@@ -713,7 +1498,7 @@
 (use-package systemd
   :mode (("\\.\\(?:service\\|timer\\|socket\\|mount\\|target\\|path\\|slice\\|scope\\|nspawn\\)\\'"
           . systemd-mode)))
-(use-package terraform-mode :mode "\\.tf\\'" :hook (terraform-mode . lsp-deferred))
+(use-package terraform-mode :mode "\\.tf\\'" :hook (terraform-mode . my/lspce-maybe-enable))
 (use-package tmux-mode :mode (("\\.tmux\\.conf\\'" . tmux-mode) ("/tmux\\.conf\\'" . tmux-mode)))
 
 (declare-function my/org-week-monday "init")
