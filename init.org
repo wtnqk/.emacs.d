@@ -58,8 +58,9 @@ GC設定はinitファイルで初期化が終わった後に設定し直す。
 #+begin_src emacs-lisp :tangle early-init.el
 ;;; early-init.el --- Generated from init.org -*- lexical-binding: t; -*-
 
-(setq package-enable-at-startup nil
-      load-prefer-newer t
+;; Nix が供給するパッケージの autoload を有効にするため、
+;; package-enable-at-startup は既定値 (t) のままにする。
+(setq load-prefer-newer t
       frame-inhibit-implied-resize t
       gc-cons-threshold most-positive-fixnum
       gc-cons-percentage 0.6)
