@@ -168,10 +168,12 @@ Emacs標準の入力メソッド切り替えでMozcを有効にする。
 Mozcの状態を利用する。Mozcの動作には =mozc_emacs_helper= が必要になる。
 
 #+begin_src emacs-lisp
-(use-package mozc
-  :ensure nil
-  :demand t
-  :custom (default-input-method "japanese-mozc"))
+;; mozc_emacs_helper は Linux のみ Nix が供給する。
+(unless (eq system-type 'darwin)
+  (use-package mozc
+    :ensure nil
+    :demand t
+    :custom (default-input-method "japanese-mozc")))
 #+end_src
 
 * 基盤

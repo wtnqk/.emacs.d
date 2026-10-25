@@ -12,10 +12,12 @@
 (setq use-package-always-defer t
       use-package-expand-minimally t)
 
-(use-package mozc
-  :ensure nil
-  :demand t
-  :custom (default-input-method "japanese-mozc"))
+;; mozc_emacs_helper は Linux のみ Nix が供給する。
+(unless (eq system-type 'darwin)
+  (use-package mozc
+    :ensure nil
+    :demand t
+    :custom (default-input-method "japanese-mozc")))
 
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-readable-p custom-file)
