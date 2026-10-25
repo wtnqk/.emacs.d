@@ -1917,20 +1917,16 @@ inline PNGの描画・scale・キャッシュは変更しない。
 :CUSTOM_ID: markdown-ts-appear
 :END:
 
-markdown-ts-appearはEmacs 31内蔵の =markdown-ts-mode= の表示を拡張し、
-キャレット位置の最小要素だけソースを明らかにする。Emacs 31.1未満には内蔵
-モードが存在しないため、バージョンガードで評価そのものを飛ばす。
+Emacs 31.1以降は=.md=を内蔵の =markdown-ts-mode= で開き、Rendered view は
+=yibie/md-mode= へ切り替えて使う。markdown-ts-appear は Emacs 31 以降で
+読み込みを拒否するため使用しない。
 
-使い方: Emacs 31.1以降では=.md=が内蔵 =markdown-ts-mode= で開かれ（評価順が
-=yibie/md-mode= の =:mode= より後になるため prepend で優先）、自動で
-appearが有効になる。30.2ではガードごと不評価なので =yibie/md-mode= のまま。
-Rendered view（=C-c C-v=）と diagram-viewer 拡大（=C-c d= / =C-c D=）は
-yibie/md-mode側の機能なので、=C-c C-v m= で同じバッファをmd-modeに切り替えて
-従来動作を使う。 戻る切り替えは =C-c C-r=。
-tree-sitter文法は 31.1 の内蔵モード側が source-alist 登録から自動導入する
-（初回のみ導入確認にYes）。Mermaid図プレビューは =mmdc= とChromeで有効化済み
-（SVG描画を実機確認）。数式プレビューは既定無効のまま（TeX未導入のため
-有効化手順はコメント参照）。
+使い方: Emacs 31.1以降では=.md=が内蔵 =markdown-ts-mode= で開かれる（評価順が
+=yibie/md-mode= の =:mode= より後になるため prepend で優先）。Rendered view
+（=C-c C-v=）と diagram-viewer 拡大（=C-c d= / =C-c D=）は yibie/md-mode側の
+機能なので、=C-c C-v m= で同じバッファをmd-modeに切り替えて使う。戻る切り替えは
+=C-c C-r=。tree-sitter文法は Nix が供給する。Mermaid図プレビューは =mmdc= と
+Chrome で有効化済み。
 
 #+begin_src emacs-lisp
 ;; Emacs 31.1 未満には内蔵 markdown-ts-mode が無く、require に失敗する。
@@ -1963,25 +1959,9 @@ tree-sitter文法は 31.1 の内蔵モード側が source-alist 登録から自�
   (with-eval-after-load 'md-mode
     (keymap-set md-mode-map "C-c C-r"
                 #'my/markdown-switch-to-markdown-ts-mode))
-  (use-package markdown-ts-appear
-    :straight (:host github :repo "Thysrael/markdown-ts-appear")
-    :hook (markdown-ts-mode . markdown-ts-appear-mode)
-    :config
-    ;; Mermaid図プレビュー。Chrome は md-mode と同一の検出結果を使う。
-    (setenv "PUPPETEER_EXECUTABLE_PATH" my/chrome-command)
-    (setopt markdown-ts-appear-diagram-renderers
-            (list (cons "mermaid"
-                        (lambda (language code theme callback)
-                          (markdown-ts-appear-diagram-mmdc
-                           language code theme callback
-                           my/mmdc-command)))))
-    ;; 数式プレビューの手順（既定無効。TeX が入っていない状態での有効化不可）:
-    ;; 1. sudo dnf install texlive-latex dvisvgm   (既定エンジン)
-    ;; 2. (use-package latex-to-svg-for-markdown :straight t :defer t)
-    ;;    で MELPA 版 (>= 0.22.2) を導入
-    ;; 3. (setopt markdown-ts-appear-enable-math-preview t)
-    ;;    して markdown-ts-appear-mode を入れ直す
-    ))
+  ;; markdown-ts-appear は Emacs 31 以降で読み込みを拒否するため使用しない。
+  ;; ソースリビールが必要な場合は md-mode の Rendered view（C-c C-v）を使う。
+  )
 #+end_src
 
 ** Markdown と Mermaid の整形

@@ -1325,25 +1325,9 @@ LSP の documentFormatting（tsserver 内蔵・別スタイル）と二重競合
   (with-eval-after-load 'md-mode
     (keymap-set md-mode-map "C-c C-r"
                 #'my/markdown-switch-to-markdown-ts-mode))
-  (use-package markdown-ts-appear
-    :straight (:host github :repo "Thysrael/markdown-ts-appear")
-    :hook (markdown-ts-mode . markdown-ts-appear-mode)
-    :config
-    ;; Mermaid図プレビュー。Chrome は md-mode と同一の検出結果を使う。
-    (setenv "PUPPETEER_EXECUTABLE_PATH" my/chrome-command)
-    (setopt markdown-ts-appear-diagram-renderers
-            (list (cons "mermaid"
-                        (lambda (language code theme callback)
-                          (markdown-ts-appear-diagram-mmdc
-                           language code theme callback
-                           my/mmdc-command)))))
-    ;; 数式プレビューの手順（既定無効。TeX が入っていない状態での有効化不可）:
-    ;; 1. sudo dnf install texlive-latex dvisvgm   (既定エンジン)
-    ;; 2. (use-package latex-to-svg-for-markdown :straight t :defer t)
-    ;;    で MELPA 版 (>= 0.22.2) を導入
-    ;; 3. (setopt markdown-ts-appear-enable-math-preview t)
-    ;;    して markdown-ts-appear-mode を入れ直す
-    ))
+  ;; markdown-ts-appear は Emacs 31 以降で読み込みを拒否するため使用しない。
+  ;; ソースリビールが必要な場合は md-mode の Rendered view（C-c C-v）を使う。
+  )
 
 ;; buffer 内容を CLI の stdin に流し stdout を反映する共通処理。
 ;; replace-buffer-contents で point を保持し、終了コード非 0
