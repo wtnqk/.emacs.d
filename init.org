@@ -64,6 +64,10 @@ GC設定はinitファイルで初期化が終わった後に設定し直す。
       frame-inhibit-implied-resize t
       gc-cons-threshold most-positive-fixnum
       gc-cons-percentage 0.6)
+
+;; package-activate-all は early-init の後に走る。一部パッケージの autoload が
+;; compile のマクロを参照するため、先に読み込んでおく。
+(require 'compile)
 #+end_src
 
 ** フレームの初期表示
@@ -2505,12 +2509,18 @@ $0
   :type 'directory
   :group 'org)
 
+(defvar my/org-directory (expand-file-name "~/00.orgs")
+  "Org データの基準ディレクトリ。")
+(dolist (dir '("" "roam" "daily" "weekly" "monthly" "meetings"
+               "projects" "notes" "templates" "hugo/org"))
+  (make-directory (expand-file-name dir my/org-directory) t))
+
 (use-package org
   :straight nil
   :mode ("\\.org\\'" . org-mode)
   :custom
-  (org-directory (expand-file-name "~/00.orgs"))
-  (org-agenda-files (list org-directory))
+  (org-directory my/org-directory)
+  (org-agenda-files (list my/org-directory))
   (org-default-notes-file (expand-file-name "inbox.org" org-directory))
   (org-log-done 'time)
   (org-startup-indented t)

@@ -1503,12 +1503,18 @@ hover/補完用の接続に留まる。"
   :type 'directory
   :group 'org)
 
+(defvar my/org-directory (expand-file-name "~/00.orgs")
+  "Org データの基準ディレクトリ。")
+(dolist (dir '("" "roam" "daily" "weekly" "monthly" "meetings"
+               "projects" "notes" "templates" "hugo/org"))
+  (make-directory (expand-file-name dir my/org-directory) t))
+
 (use-package org
   :straight nil
   :mode ("\\.org\\'" . org-mode)
   :custom
-  (org-directory (expand-file-name "~/00.orgs"))
-  (org-agenda-files (list org-directory))
+  (org-directory my/org-directory)
+  (org-agenda-files (list my/org-directory))
   (org-default-notes-file (expand-file-name "inbox.org" org-directory))
   (org-log-done 'time)
   (org-startup-indented t)
