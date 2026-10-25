@@ -1,29 +1,21 @@
 ;;; init.el -*- lexical-binding: t; -*-
 
+;; Nix manages all Emacs packages. Keep the old straight.el forms working by
+;; treating `:straight' as a no-op and never invoking straight at runtime.
+(require 'use-package-core)
+(defun use-package-normalize/:straight (_name _keyword args) args)
+(defun use-package-handler/:straight (name _keyword _arg rest state)
+  (use-package-process-keywords name rest state))
+(add-to-list 'use-package-keywords :straight t)
+(defun straight-use-package (&rest _args) nil)
+
+(setq use-package-always-defer t
+      use-package-expand-minimally t)
+
 (use-package mozc
   :ensure nil
   :demand t
   :custom (default-input-method "japanese-mozc"))
-
-;;; init.el --- Generated from init.org -*- lexical-binding: t; -*-
-
-(defvar bootstrap-version)
-(let ((bootstrap-file
-       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
-      (bootstrap-version 7))
-  (unless (file-exists-p bootstrap-file)
-    (with-current-buffer
-        (url-retrieve-synchronously
-         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
-         'silent 'inhibit-cookies)
-      (goto-char (point-max))
-      (eval-print-last-sexp)))
-  (load bootstrap-file nil 'nomessage))
-
-(straight-use-package 'use-package)
-(setq straight-use-package-by-default t
-      use-package-always-defer t
-      use-package-expand-minimally t)
 
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
 (when (file-readable-p custom-file)
@@ -183,14 +175,9 @@
                                      (expand-file-name "init.org" user-emacs-directory)))
               (add-hook 'after-save-hook #'my/tangle-config-on-save nil t))))
 
-(straight-use-package
- '(doom-everforest-theme
-   :type git
-   :host github
-   :repo "Cardoso1994/doom-everforest-theme"))
-(add-to-list 'custom-theme-load-path
-             (expand-file-name "straight/build/doom-everforest-theme"
-                               user-emacs-directory))
+;; Nix が供給する doom-everforest-theme をテーマ探索パスへ追加する。
+(when-let ((theme (locate-library "doom-everforest-theme")))
+  (add-to-list 'custom-theme-load-path (file-name-directory theme)))
 
 ;; doom-themes-base.el の face 表は gnus-group-news-low-empty へ
 ;; :inherit 'gnus-group-news-low を張るが、gnus 既定側は news-low へ
@@ -461,7 +448,7 @@
   ;; 選択窓だけ、無ければフルフレームになる dired 兼 dirvish。
   ("C-x 4 d" . dirvish-dwim)
   ;; 以下は dirvish 2.3.0 の現行コマンド名で統一（2024-10 時点、
-  ;; straight/repos 内を grep して実在確認済み）。旧README由来の
+  ;; 導入済みパッケージ内を grep して実在確認済み）。旧README由来の
   ;; dirvish-quick-visit / dirvish-filter-menu / dirvish-occur /
   ;; dirvish-sort-by-mtime / dirvish-tabs-* / dirvish-remove-buffer /
   ;; dirvish-backup-dir-menu / dirvish-subtree-state-toggle は
@@ -951,13 +938,13 @@ dirvishセッション内なら `dirvish-quit'、そうでなければ窓を閉�
 (declare-function global-treesit-auto-mode "treesit-auto")
 
 (use-package treesit-auto
-  :custom (treesit-auto-install 'prompt)
+  ;; Nix が treesit-grammars を供給するため、実行時の自動導入は行わない。
+  :custom (treesit-auto-install nil)
   :config (global-treesit-auto-mode 1))
 (use-package apheleia :config (apheleia-global-mode 1))
 
 ;; lspce の依存（README 記載）。f と markdown-mode は lspce.el がロード時に
-;; require するが、lspce に Package-Requires 宣言が無いので straight には
-;; 明示宣言が必要（無いとロード時 require で落ちる）。yasnippet は導入済み。
+;; require するため、Nix 側でも明示的に導入する。yasnippet は導入済み。
 (use-package f :straight t :defer t)
 (use-package markdown-mode :straight t :defer t)
 ;; hover float の描画先。無いと lspce は別窓表示に退避する（窓を割られる）。
@@ -1219,14 +1206,24 @@ LSP の documentFormatting（tsserver 内蔵・別スタイル）と二重競合
 (use-package sql :straight nil :hook (sql-mode . my/lspce-maybe-enable))
 (use-package textui
   :straight (:host github :repo "yibie/textui"))
+(defvar my/mmdc-command
+  (or (executable-find "mmdc")
+      (expand-file-name "~/.bun/bin/mmdc"))
+  "Mermaid CLI executable.")
+(defvar my/chrome-command
+  (or (getenv "CHROME_EXECUTABLE")
+      (executable-find "google-chrome-stable")
+      (executable-find "chromium")
+      "/usr/sbin/google-chrome")
+  "Browser executable used by Mermaid/Puppeteer.")
 (use-package md-mode
   :straight (:host github :repo "yibie/md-mode")
   :mode "\\.md\\'"
   :hook (md-mode . my/lspce-maybe-enable)
   :custom
   (md-render-mermaid-enabled t)
-  (md-render-mermaid-command (expand-file-name "~/.bun/bin/mmdc"))
-  (md-render-mermaid-browser "/usr/sbin/google-chrome"))
+  (md-render-mermaid-command my/mmdc-command)
+  (md-render-mermaid-browser my/chrome-command))
 (defcustom my/md-render-mermaid-scale 2
   "Scale factor passed to Mermaid CLI and included in its media cache key."
   :type '(number :validate
@@ -1330,15 +1327,14 @@ LSP の documentFormatting（tsserver 内蔵・別スタイル）と二重競合
     :straight (:host github :repo "Thysrael/markdown-ts-appear")
     :hook (markdown-ts-mode . markdown-ts-appear-mode)
     :config
-    ;; Mermaid図プレビュー。mmdc は bun グローバル、Chrome は md-mode と同一。
-    ;; Puppeteer はこの環境変数で既存 Chrome を使う（SVG出力は実機確認済み）。
-    (setenv "PUPPETEER_EXECUTABLE_PATH" "/usr/sbin/google-chrome")
+    ;; Mermaid図プレビュー。Chrome は md-mode と同一の検出結果を使う。
+    (setenv "PUPPETEER_EXECUTABLE_PATH" my/chrome-command)
     (setopt markdown-ts-appear-diagram-renderers
             (list (cons "mermaid"
                         (lambda (language code theme callback)
                           (markdown-ts-appear-diagram-mmdc
                            language code theme callback
-                           (expand-file-name "~/.bun/bin/mmdc"))))))
+                           my/mmdc-command)))))
     ;; 数式プレビューの手順（既定無効。TeX が入っていない状態での有効化不可）:
     ;; 1. sudo dnf install texlive-latex dvisvgm   (既定エンジン)
     ;; 2. (use-package latex-to-svg-for-markdown :straight t :defer t)
@@ -1447,8 +1443,13 @@ hover/補完用の接続に留まる。"
 (use-package ghostel
   :commands (ghostel ghostel-project ghostel-compile)
   :custom
-  (ghostel-module-directory (expand-file-name "var/ghostel/" user-emacs-directory))
-  (ghostel-module-auto-install 'download))
+  ;; Nix パッケージに同梱されたネイティブモジュールをそのまま使う。
+  (ghostel-module-directory
+   (or (getenv "GHOSTEL_MODULE_DIR")
+       (when-let ((lib (locate-library "ghostel")))
+         (file-name-directory lib))
+       (expand-file-name "var/ghostel/" user-emacs-directory)))
+  (ghostel-module-auto-install nil))
 
 (use-package prism
   :commands (prism-mode prism-whitespace-mode))
@@ -1785,7 +1786,12 @@ the daily files to archive/daily/YYYY-MM/. Idempotent per month."
   (interactive)
   (consult-ripgrep org-roam-directory))
 
-(add-to-list 'load-path "/usr/share/emacs/site-lisp/mu4e")
+;; Nix の mu に同梱された mu4e、またはプロファイル上の mu4e を探索する。
+(dolist (dir (list (getenv "MU4E_LISP_DIR")
+                   (expand-file-name "~/.nix-profile/share/emacs/site-lisp/mu4e")
+                   "/usr/share/emacs/site-lisp/mu4e"))
+  (when (and dir (file-directory-p dir))
+    (add-to-list 'load-path dir)))
 (use-package mu4e
   :straight nil
   :commands mu4e

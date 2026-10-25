@@ -13,7 +13,7 @@
 
 - =M-x org-babel-tangle= で起動ファイルを生成する。
 - このファイルをEmacsで保存した場合は自動的に再生成する。
-- パッケージ管理にはstraight.elとuse-packageを使用する。
+- パッケージはNixが供給し、設定はuse-packageで記述する。
 
 =init.el= をlexical bindingのファイルにするため、クッキーを1行目に置く。
 =init.el= へのtangle対象では最もこのファイルに近い位置のブロックなので、
@@ -23,6 +23,18 @@
 
 #+begin_src emacs-lisp
 ;;; init.el -*- lexical-binding: t; -*-
+
+;; Nix manages all Emacs packages. Keep the old straight.el forms working by
+;; treating `:straight' as a no-op and never invoking straight at runtime.
+(require 'use-package-core)
+(defun use-package-normalize/:straight (_name _keyword args) args)
+(defun use-package-handler/:straight (name _keyword _arg rest state)
+  (use-package-process-keywords name rest state))
+(add-to-list 'use-package-keywords :straight t)
+(defun straight-use-package (&rest _args) nil)
+
+(setq use-package-always-defer t
+      use-package-expand-minimally t)
 #+end_src
 
 * 初期化前の設定
@@ -106,7 +118,7 @@ Emacs標準のスタートアップ画面を表示せず、後段でdashboardを
 :END:
 
 Emacs 31は =lexical-binding= クッキーの無いファイルを読み込むたびに警告する。
-site-start.d直下やstraight buildのサードパーティ製ファイルは上流修正待ちで
+site-start.d直下やNixが供給するサードパーティ製ファイルは上流修正待ちで
 直接直せないため、最初に読まれるearly-initでこの警告だけ抑止する。 Emacs 31では
 警告機構が新しい =warnings.el= に移り、早期起動の警告はキュー入り前に
 =warning-inhibit-types= で照合される。 自分の =init.el= は抑止に頼らず
@@ -174,33 +186,13 @@ Mozcの状態を利用する。Mozcの動作には =mozc_emacs_helper= が必要
 :CUSTOM_ID: package-management
 :END:
 
-straight.elを初回だけ公式インストーラーから導入し、use-packageから宣言したパッケージを
-straight.elで取得する。
+パッケージはNixが供給する。use-packageは設定の記述と遅延読み込みだけに使い、
+パッケージの取得・ビルドは行わない。旧設定との互換のため =:straight= キーワードと
+=straight-use-package= は無視する。
 
 使い方: パッケージを追加するときは、このファイルの =use-package= ブロックへ宣言を書く。
-初回起動時にstraight.elが取得・ビルドする。
-
-#+begin_src emacs-lisp
-;;; init.el --- Generated from init.org -*- lexical-binding: t; -*-
-
-(defvar bootstrap-version)
-(let ((bootstrap-file
-       (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
-      (bootstrap-version 7))
-  (unless (file-exists-p bootstrap-file)
-    (with-current-buffer
-        (url-retrieve-synchronously
-         "https://raw.githubusercontent.com/radian-software/straight.el/develop/install.el"
-         'silent 'inhibit-cookies)
-      (goto-char (point-max))
-      (eval-print-last-sexp)))
-  (load bootstrap-file nil 'nomessage))
-
-(straight-use-package 'use-package)
-(setq straight-use-package-by-default t
-      use-package-always-defer t
-      use-package-expand-minimally t)
-#+end_src
+Nix側の =home-manager/editor/emacs/packages.nix= にも追加する。互換用の
+=:straight= no-op はinit.elの先頭で定義する。
 
 ** Customizeの分離
 :PROPERTIES:
@@ -481,14 +473,9 @@ Everforestを起動時に読み込み、Orgの見出しやブロックにもテ�
 使い方: 起動時に自動適用される。別テーマへ変更する場合は =M-x load-theme= を使う。
 
 #+begin_src emacs-lisp
-(straight-use-package
- '(doom-everforest-theme
-   :type git
-   :host github
-   :repo "Cardoso1994/doom-everforest-theme"))
-(add-to-list 'custom-theme-load-path
-             (expand-file-name "straight/build/doom-everforest-theme"
-                               user-emacs-directory))
+;; Nix が供給する doom-everforest-theme をテーマ探索パスへ追加する。
+(when-let ((theme (locate-library "doom-everforest-theme")))
+  (add-to-list 'custom-theme-load-path (file-name-directory theme)))
 
 ;; doom-themes-base.el の face 表は gnus-group-news-low-empty へ
 ;; :inherit 'gnus-group-news-low を張るが、gnus 既定側は news-low へ
@@ -882,7 +869,7 @@ Emacs標準のproject.elを基盤に、Magit、Git関連モード、差分表示
   ;; 選択窓だけ、無ければフルフレームになる dired 兼 dirvish。
   ("C-x 4 d" . dirvish-dwim)
   ;; 以下は dirvish 2.3.0 の現行コマンド名で統一（2024-10 時点、
-  ;; straight/repos 内を grep して実在確認済み）。旧README由来の
+  ;; 導入済みパッケージ内を grep して実在確認済み）。旧README由来の
   ;; dirvish-quick-visit / dirvish-filter-menu / dirvish-occur /
   ;; dirvish-sort-by-mtime / dirvish-tabs-* / dirvish-remove-buffer /
   ;; dirvish-backup-dir-menu / dirvish-subtree-state-toggle は
@@ -1418,7 +1405,8 @@ Flycheckで診断し、Yasnippetでスニペットを展開する。Tree-sitter�
 (declare-function global-treesit-auto-mode "treesit-auto")
 
 (use-package treesit-auto
-  :custom (treesit-auto-install 'prompt)
+  ;; Nix が treesit-grammars を供給するため、実行時の自動導入は行わない。
+  :custom (treesit-auto-install nil)
   :config (global-treesit-auto-mode 1))
 (use-package apheleia :config (apheleia-global-mode 1))
 #+end_src
@@ -1454,13 +1442,11 @@ imenu はサーバー側のシンボル索引を使う。hover は posframe の 
 leader =e f=（LSP バッファは flymake、他は consult-flycheck）。ジャンプ系の一覧表示は
 Consult の xref 関数に切り替えている。失せるもの: lsp-ui の sideline 行末UI・
 peek 画面・headerline breadcrumb・dap-mode デバッガー・lsp-treemacs（必要時に
-個別導入）。ビルド: straight の =:pre-build= で =cargo build --release= が走る
-（初回起動のみ数分。~/.cargo/bin は exec-path 節で追加済み）。
+個別導入）。ビルド: Nix が Rust モジュール込みの =lspce= を供給する。
 
 #+begin_src emacs-lisp
 ;; lspce の依存（README 記載）。f と markdown-mode は lspce.el がロード時に
-;; require するが、lspce に Package-Requires 宣言が無いので straight には
-;; 明示宣言が必要（無いとロード時 require で落ちる）。yasnippet は導入済み。
+;; require するため、Nix 側でも明示的に導入する。yasnippet は導入済み。
 (use-package f :straight t :defer t)
 (use-package markdown-mode :straight t :defer t)
 ;; hover float の描画先。無いと lspce は別窓表示に退避する（窓を割られる）。
@@ -1822,14 +1808,24 @@ SQL、Markdown、Typstを編集する。Markdownには =yibie/md-mode= を使い
 (use-package sql :straight nil :hook (sql-mode . my/lspce-maybe-enable))
 (use-package textui
   :straight (:host github :repo "yibie/textui"))
+(defvar my/mmdc-command
+  (or (executable-find "mmdc")
+      (expand-file-name "~/.bun/bin/mmdc"))
+  "Mermaid CLI executable.")
+(defvar my/chrome-command
+  (or (getenv "CHROME_EXECUTABLE")
+      (executable-find "google-chrome-stable")
+      (executable-find "chromium")
+      "/usr/sbin/google-chrome")
+  "Browser executable used by Mermaid/Puppeteer.")
 (use-package md-mode
   :straight (:host github :repo "yibie/md-mode")
   :mode "\\.md\\'"
   :hook (md-mode . my/lspce-maybe-enable)
   :custom
   (md-render-mermaid-enabled t)
-  (md-render-mermaid-command (expand-file-name "~/.bun/bin/mmdc"))
-  (md-render-mermaid-browser "/usr/sbin/google-chrome"))
+  (md-render-mermaid-command my/mmdc-command)
+  (md-render-mermaid-browser my/chrome-command))
 (defcustom my/md-render-mermaid-scale 2
   "Scale factor passed to Mermaid CLI and included in its media cache key."
   :type '(number :validate
@@ -1969,15 +1965,14 @@ tree-sitter文法は 31.1 の内蔵モード側が source-alist 登録から自�
     :straight (:host github :repo "Thysrael/markdown-ts-appear")
     :hook (markdown-ts-mode . markdown-ts-appear-mode)
     :config
-    ;; Mermaid図プレビュー。mmdc は bun グローバル、Chrome は md-mode と同一。
-    ;; Puppeteer はこの環境変数で既存 Chrome を使う（SVG出力は実機確認済み）。
-    (setenv "PUPPETEER_EXECUTABLE_PATH" "/usr/sbin/google-chrome")
+    ;; Mermaid図プレビュー。Chrome は md-mode と同一の検出結果を使う。
+    (setenv "PUPPETEER_EXECUTABLE_PATH" my/chrome-command)
     (setopt markdown-ts-appear-diagram-renderers
             (list (cons "mermaid"
                         (lambda (language code theme callback)
                           (markdown-ts-appear-diagram-mmdc
                            language code theme callback
-                           (expand-file-name "~/.bun/bin/mmdc"))))))
+                           my/mmdc-command)))))
     ;; 数式プレビューの手順（既定無効。TeX が入っていない状態での有効化不可）:
     ;; 1. sudo dnf install texlive-latex dvisvgm   (既定エンジン)
     ;; 2. (use-package latex-to-svg-for-markdown :straight t :defer t)
@@ -2175,8 +2170,13 @@ fishの統合（ディレクトリ追跡、プロンプト間移動、=ghostel_c
 (use-package ghostel
   :commands (ghostel ghostel-project ghostel-compile)
   :custom
-  (ghostel-module-directory (expand-file-name "var/ghostel/" user-emacs-directory))
-  (ghostel-module-auto-install 'download))
+  ;; Nix パッケージに同梱されたネイティブモジュールをそのまま使う。
+  (ghostel-module-directory
+   (or (getenv "GHOSTEL_MODULE_DIR")
+       (when-let ((lib (locate-library "ghostel")))
+         (file-name-directory lib))
+       (expand-file-name "var/ghostel/" user-emacs-directory)))
+  (ghostel-module-auto-install nil))
 #+end_src
 
 ** 入力モード
@@ -2875,7 +2875,12 @@ mbsyncで5分ごとにMaildirを同期し、送信はmsmtpへ委譲する。mu4e
 使い方: =C-c SPC m m= または =M-x mu4e= でメールを開く。外部コマンド =mbsync= と =msmtp= が必要になる。
 
 #+begin_src emacs-lisp
-(add-to-list 'load-path "/usr/share/emacs/site-lisp/mu4e")
+;; Nix の mu に同梱された mu4e、またはプロファイル上の mu4e を探索する。
+(dolist (dir (list (getenv "MU4E_LISP_DIR")
+                   (expand-file-name "~/.nix-profile/share/emacs/site-lisp/mu4e")
+                   "/usr/share/emacs/site-lisp/mu4e"))
+  (when (and dir (file-directory-p dir))
+    (add-to-list 'load-path dir)))
 (use-package mu4e
   :straight nil
   :commands mu4e
