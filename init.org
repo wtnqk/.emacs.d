@@ -342,6 +342,13 @@ which-keyで利用可能なキーを表示する。主要コマンドは =C-c SP
   :demand t
   :config (which-key-mode 1))
 
+(use-package helpful
+  :bind (("C-h f" . helpful-callable)
+         ("C-h v" . helpful-variable)
+         ("C-h k" . helpful-key)
+         ("C-h x" . helpful-command)
+         ("C-h ." . helpful-at-point)))
+
 (use-package general
   :demand t
   :config
@@ -481,35 +488,43 @@ Everforestを起動時に読み込み、Orgの見出しやブロックにもテ�
 使い方: 起動時に自動適用される。別テーマへ変更する場合は =M-x load-theme= を使う。
 
 #+begin_src emacs-lisp
-(straight-use-package
- '(doom-everforest-theme
-   :type git
-   :host github
-   :repo "Cardoso1994/doom-everforest-theme"))
-(add-to-list 'custom-theme-load-path
-             (expand-file-name "straight/build/doom-everforest-theme"
-                               user-emacs-directory))
+  (straight-use-package
+   '(doom-everforest-theme
+     :type git
+     :host github
+     :repo "Cardoso1994/doom-everforest-theme"))
+  (add-to-list 'custom-theme-load-path
+               (expand-file-name "straight/build/doom-everforest-theme"
+                                 user-emacs-directory))
 
-;; doom-themes-base.el の face 表は gnus-group-news-low-empty へ
-;; :inherit 'gnus-group-news-low を張るが、gnus 既定側は news-low へ
-;; :inherit news-low-empty を張るため相互継承の輪になる（upstream 側の不具合）。
-;; 両方が face-spec-map に揃うと、ポップアップ枠（corfu/posframe）作成時の
-;; face 初期化で "Face inheritance results in inheritance cycle" が
-;; signaling され、補完ウィンドウの生成が失敗し続けて *Messages* へ
-;; バックトレースが流れ続ける。def-doom-theme はテーマロード時にこの表を
-;; 展開するので、展開前に表側をパッチして :inherit を使わない
-;; 「base5 色直書き・normal 太さ」（テーマの意図と同一の見た目）へ置換し、
-;; 輪の生成そのものを無くす。下の use-package より前（＝テーマ展開前）に
-;; 評価される位置に置くこと。
-(with-eval-after-load 'doom-themes-base
-  (when-let ((entry (assq 'gnus-group-news-low-empty doom-themes-base-faces)))
-    (setcdr entry '(:foreground base5 :weight 'normal))))
+  ;; doom-themes-base.el の face 表は gnus-group-news-low-empty へ
+  ;; :inherit 'gnus-group-news-low を張るが、gnus 既定側は news-low へ
+  ;; :inherit news-low-empty を張るため相互継承の輪になる（upstream 側の不具合）。
+  ;; 両方が face-spec-map に揃うと、ポップアップ枠（corfu/posframe）作成時の
+  ;; face 初期化で "Face inheritance results in inheritance cycle" が
+  ;; signaling され、補完ウィンドウの生成が失敗し続けて *Messages* へ
+  ;; バックトレースが流れ続ける。def-doom-theme はテーマロード時にこの表を
+  ;; 展開するので、展開前に表側をパッチして :inherit を使わない
+  ;; 「base5 色直書き・normal 太さ」（テーマの意図と同一の見た目）へ置換し、
+  ;; 輪の生成そのものを無くす。下の use-package より前（＝テーマ展開前）に
+  ;; 評価される位置に置くこと。
+  (with-eval-after-load 'doom-themes-base
+    (when-let ((entry (assq 'gnus-group-news-low-empty doom-themes-base-faces)))
+      (setcdr entry '(:foreground base5 :weight 'normal))))
 
-(use-package doom-themes
-  :demand t
-  :config
-  (load-theme 'doom-everforest t)
-  (doom-themes-org-config))
+  (use-package doom-themes
+    :demand t
+    :config
+    (load-theme 'doom-everforest t)
+    (doom-themes-org-config))
+
+  ;; =M-x load-theme= の候補を増やすための追加テーマ。起動時には有効化せず、
+  ;; autoloads が custom-theme-load-path へ登録するだけに留める。
+  (use-package cyberpunk-theme
+    :defer t)                             ; cyberpunk
+
+  (use-package spacemacs-theme
+    :defer t)                             ; spacemacs-dark / spacemacs-light
 #+end_src
 
 ** アイコンとモードライン
@@ -1446,7 +1461,7 @@ lsp-mode（rust-analyzer 併用で重い）をやめ、Rust モジュール製�
 flymake バックエンドとして出る（該当バッファでは flycheck を止めて二重表示を回避）。
 imenu はサーバー側のシンボル索引を使う。hover は posframe の float で、窓は割らない。
 
-使い方: サーバーの実在する言語（rust / typescript / json / python / go / markdown）の
+使い方: サーバーの実在する言語（rust / typescript / json / python / go / markdown / fsharp）の
 ファイルを project 内で開くと =lspce-mode= が自動で付き、mode-line にサーバー名が
 出る。leader =l= グループ: =l d= 定義 / =l r= 参照 / =l i= 実装 / =l s= ワークスペース
 シンボル / =l m= imenu / =l a= code action / =l n= rename / =l h= inlay hints
@@ -1498,7 +1513,10 @@ peek 画面・headerline breadcrumb・dap-mode デバッガー・lsp-treemacs（
             ("typescript" ,tsl "--stdio")
             ("js" ,tsl "--stdio")
             ("json" ,tsl "--stdio")
-            ("markdown" ,marksman ""))))
+            ("markdown" ,marksman "")
+            ;; dotnet tool install -g fsautocomplete で ~/.dotnet/tools に入る。
+            ("fsharp" ,(expand-file-name "~/.dotnet/tools/fsautocomplete") "")
+            ("fsharp" "fsautocomplete" ""))))
   ;; md-mode（yibie/md-mode）の type は "md" になり default と噛み合わないため
   ;; markdown に正規化する。
   (defun my/lspce-lsp-type ()
@@ -1794,9 +1812,11 @@ YAML、TOML、JSON、Luaに対応するモードを拡張子へ関連付ける�
 :CUSTOM_ID: functional-and-jvm-languages
 :END:
 
-Erlang VM系、Haskell、OCaml、Kotlinの各モードでLSPを利用する。
+Erlang VM系、Haskell、OCaml、F#、Kotlinの各モードでLSPを利用する。
 
 使い方: 対応する拡張子のファイルを開くと各言語モードとLSPが遅延起動する。
+F#（=.fs=、=.fsi=、=.fsx=）のLSPは fsautocomplete を使う。.NET SDK を入れたうえで
+=dotnet tool install -g fsautocomplete= を実行すると、次にF#ファイルを開いたときから有効になる。
 
 #+begin_src emacs-lisp
 (use-package erlang :mode "\\.erl\\'" :hook (erlang-mode . my/lspce-maybe-enable))
@@ -1804,6 +1824,18 @@ Erlang VM系、Haskell、OCaml、Kotlinの各モードでLSPを利用する。
 (use-package gleam-ts-mode :mode "\\.gleam\\'" :hook (gleam-ts-mode . my/lspce-maybe-enable))
 (use-package haskell-mode :mode "\\.hs\\'" :hook (haskell-mode . my/lspce-maybe-enable))
 (use-package tuareg :mode "\\.mli?\\'" :hook (tuareg-mode . my/lspce-maybe-enable))
+(use-package fsharp-mode
+  :mode "\\.fs[ix]?\\'"
+  :hook (fsharp-mode . my/lspce-maybe-enable)
+  :init
+  ;; Markdown のフェンスは言語名 + "-mode" で解決されるため ```fsharp は
+  ;; そのまま fsharp-mode になる。よく使われる別名 ```fs / ```fsx / ```f# を足す。
+  (with-eval-after-load 'markdown-ts-mode
+    (dolist (lang '(fs fsx f\#))
+      (add-to-list 'markdown-ts-code-block-modes (list lang 'fsharp-mode))))
+  (with-eval-after-load 'md-render-core
+    (dolist (lang '("fs" "fsx" "f#"))
+      (add-to-list 'md-render-language-mapping (cons lang "fsharp")))))
 (use-package kotlin-mode :mode "\\.kts?\\'" :hook (kotlin-mode . my/lspce-maybe-enable))
 #+end_src
 
@@ -2788,6 +2820,16 @@ ox-hugoを使い、OrgファイルからHugo向けMarkdownを出力する。記�
   :custom
   (org-hugo-base-dir my/org-hugo-base-dir)
   (org-hugo-auto-set-lastmod t))
+#+end_src
+
+GitHub Flavored Markdownへの出力にはox-gfmを使う。表はHTMLではなくMarkdownの表として出力する。
+
+使い方: Orgバッファで =C-c C-e g g= または =M-x org-gfm-export-to-markdown= を実行する。
+
+#+begin_src emacs-lisp
+(use-package ox-gfm
+  :after ox
+  :demand t)
 #+end_src
 
 Confluence Storage Formatへの出力には `ox-confluence-html` を使う。まずはローカルファイルへの
